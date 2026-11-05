@@ -86,7 +86,10 @@ def proximity_pairs(candidates: list[dict], model: BudgetedModel,
     for row in rows:
         if not isinstance(row, dict):
             raise ValueError("Invalid proximity row")
-        key = tuple(sorted((row.get("a"), row.get("b"))))
+        a_id, b_id = row.get("a"), row.get("b")
+        if not isinstance(a_id, str) or not isinstance(b_id, str):
+            raise ValueError("Missing pair IDs")
+        key = tuple(sorted((a_id, b_id)))
         score = row.get("similarity")
         if key not in expected or key in pair_scores or isinstance(score, bool) or (
             not isinstance(score, (int, float)) or not math.isfinite(score) or not 0 <= score <= 1

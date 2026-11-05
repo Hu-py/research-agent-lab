@@ -24,6 +24,9 @@ def choose_next(model: BudgetedModel, *,
     # next supervisor: 1. Keep at least 1 scientific validator call reserved.
     min_budget_for_next_generation = 4 + 1 + 6 + 1 + reserved_verification_calls
     remaining = model.max_calls - model.usage.calls
+    if generation == 0 and max_generations == 0:
+        return {"action": "verify", "reason": "No evolution requested",
+                "hard_guard": True, "elo_margin": round(gap, 2)}
     if ((generation < max_generations and remaining < min_budget_for_next_generation)
             or (generation >= max_generations and remaining < 2)):
         return {"action": "verify", "reason": "Hard generation/call budget limit",

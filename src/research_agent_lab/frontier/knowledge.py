@@ -139,11 +139,17 @@ def independent_screen(snapshot: Snapshot, model: BudgetedModel,
     votes: list[dict[str, bool]] = []
     diagnostics = []
     for role in ("paper_juror_a", "paper_juror_b"):
+        focus = (
+            "Focus on scientific problems, theoretical contribution and topic fit."
+            if role == "paper_juror_a" else
+            "Focus on methods, methodological transfer, data feasibility and limitations."
+        )
         raw = model.complete(
             role=role, system=SYSTEM + (
                 " Independently judge whether each supplied bibliographic record "
                 "is relevant and sufficiently informative for THIS research line. "
-                "Evaluate every paper once. Do not assume metadata implies quality."
+                "Evaluate every paper once. Do not assume metadata implies quality. "
+                + focus
             ),
             payload={"line": snapshot.research_line.model_dump(),
                      "datasets": [d.model_dump() for d in snapshot.datasets],
