@@ -179,3 +179,40 @@ and can store the result in a dedicated Supabase project.
 **Scientific caveat:** This is a technical execution pipeline, not a
 validated proof of better research ideas. LLM pairwise preferences and Elo
 scores are not independent scientific validation.
+
+
+---
+
+## V0.4: Evidence-first team research portraits
+
+The new portrait engine lets you reconsider a team's research expertise from
+its **verified past output records**, public-safe dataset metadata and separate
+external literature—not just the keywords in its old profile.
+
+- Scientific Curator -> adversarial Critic -> corrected research lines -> next
+  question Selector -> existing four-layer Research Frontier.
+- Every output is cited by its original verified achievement/dataset ID.
+- Skill claims from titles are marked inferential; missing dataset access is
+  explicit. All unassigned achievements must be acknowledged.
+- Profile versions and changes are saved to the isolated Supabase table
+  lab_profile_versions, preserving the old version and NEVER updating the
+  original workbench's official team profile.
+- The next real Actions run can select evidence_source=team_evidence after the
+  operator provides approved TEAM_EVIDENCE_JSON metadata (not raw datasets).
+- Research generation remains manually triggered; new team evidence must be
+  re-exported and the Secret updated before it can alter the profile.
+
+**The original Render database is not externally reachable, so V0.4 has NOT
+yet ingested its current live portrait.** Its source code and public bibliographic
+seed were inspected; neither should be represented as live team database rows.
+
+1. Apply [SQL migration 003](sql/003_profile_versions.sql) to the isolated
+   Supabase project.
+2. Follow [the evidence-first portrait guide](docs/evidence-first-portrait.md)
+   for an authorized read-only export.
+3. Register TEAM_EVIDENCE_JSON under the GitHub Actions repository Secrets.
+4. Manually run Live Research Agent Lab (manual) with team_evidence selected.
+
+No private team portrait is ever uploaded to a public CI artifact. During
+a team_evidence run, output is stored only in the access-controlled Supabase
+research lab tables, and sensitive temporary files are deleted.

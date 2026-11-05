@@ -13,6 +13,10 @@ import tempfile
 from pathlib import Path
 
 from research_agent_lab.contracts import Snapshot
+from research_agent_lab.portrait import EvidenceBundle
+from research_agent_lab.portrait_cli import main as portrait_main
+from research_agent_lab.portrait_store import check_profile_store
+from .storage import check_frontier_supabase
 from research_agent_lab.supabase_auth import headers, supabase_url
 from .cli import main as frontier_main
 
@@ -72,18 +76,48 @@ def validate_cloud_config(*, persist: bool) -> None:
 def main() -> int:
     private_path: Path | None = None
     try:
-        evidence = _choice("EVIDENCE_SOURCE", {"public_demo", "approved_secret"})
+        evidence = _choice("EVIDENCE_SOURCE", {"public_demo", "approved_secret", "team_evidence"})
         generations = _choice("MAX_GENERATIONS_INPUT", {"0", "1"})
         papers = _choice("MAX_PAPERS_INPUT", {"4", "6", "8"})
         pairs = _choice("MAX_PAIRS_INPUT", {"1", "2", "3"})
         persist = _choice("SAVE_SUPABASE", {"true", "false"}) == "true"
         validate_cloud_config(persist=persist)
-        path, ephemeral = choose_snapshot(
-            evidence, os.getenv("RESEARCH_SNAPSHOT_JSON"),
-            directory=os.getenv("RUNNER_TEMP") or tempfile.gettempdir()
-        )
-        if ephemeral:
-            private_path = path
+        if evidence == "team_evidence":
+            if not persist:
+                raise ValueError("team_evidence requires save_supabase=true for versioned memory")
+            raw = os.getenv("TEAM_EVIDENCE_JSON") or ""
+            if not raw:
+                raise ValueError("Missing TEAM_EVIDENCE_JSON GitHub Secret")
+            bundle = EvidenceBundle.model_validate_json(raw)
+            # Validate BOTH destination tables prior to charging the model.
+            check_profile_store()
+            check_frontier_supabase()
+            with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", prefix="team-evidence-",
+                suffix=".json",
+                dir=os.getenv("RUNNER_TEMP") or tempfile.gettempdir(),
+                delete=False
+            ) as source_file:
+                source_file.write(bundle.model_dump_json())
+                private_path = Path(source_file.name)
+            private_path.chmod(0o600)
+            private_snapshot = Path("outputs/derived-team-snapshot-private.json")
+            status = portrait_main([
+                "--evidence", str(private_path),
+                "--out", "outputs/team-portrait-private.json",
+                "--snapshot-out", str(private_snapshot),
+                "--persist"
+            ])
+            if status != 0:
+                return status
+            path = private_snapshot
+        else:
+            path, ephemeral = choose_snapshot(
+                evidence, os.getenv("RESEARCH_SNAPSHOT_JSON"),
+                directory=os.getenv("RUNNER_TEMP") or tempfile.gettempdir()
+            )
+            if ephemeral:
+                private_path = path
         output_path = Path("outputs") / (
             "live-frontier-public.json" if evidence == "public_demo"
             else "live-frontier-private.json"
@@ -136,6 +170,11 @@ def main() -> int:
         if private_path:
             private_path.unlink(missing_ok=True)
             Path("outputs/live-frontier-private.json").unlink(missing_ok=True)
+        for private_output in (
+            "outputs/derived-team-snapshot-private.json",
+            "outputs/team-portrait-private.json",
+        ):
+            Path(private_output).unlink(missing_ok=True)
 
 
 if __name__ == "__main__":

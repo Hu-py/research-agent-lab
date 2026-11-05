@@ -18,7 +18,8 @@ from research_agent_lab.integrations import TracedModel
 from .engine import FrontierConfig, run_frontier
 from .memory import MemoryStore
 from .mock import FrontierMockModel
-from .storage import persist_frontier_run
+from .storage import persist_frontier_run, check_frontier_supabase
+from .remote_memory import hydrate_recent_memory
 
 
 def _read_json(path: str):
@@ -79,6 +80,9 @@ def main(argv: list[str] | None = None) -> int:
                     raise ValueError("Source registry must be a nonempty JSON list of venue names")
                 registry = {v.strip().casefold() for v in venues}
             pilot = _read_json(args.pilot_manifest) if args.pilot_manifest else None
+            if args.persist:
+                check_frontier_supabase()
+                hydrate_recent_memory(memory, snapshot.research_line.id)
             underlying = FrontierMockModel() if args.mock else DeepSeekJSONModel()
             traced = TracedModel(underlying)
             try:
