@@ -29,6 +29,8 @@ def main(argv=None):
     parser.add_argument("--limit-external", type=int, default=20)
     parser.add_argument("--include-approved-internal-metadata", action="store_true",
                         help="Explicit opt-in: share allowed internal DATASET METADATA, never raw data")
+    parser.add_argument("--internal-allowlist", default="",
+                        help="Private JSON list of individually approved internal dataset IDs")
     args = parser.parse_args(argv)
     if not os.getenv("DATABASE_URL"):
         parser.error("Set DATABASE_URL in authorized original-workbench environment")
@@ -37,10 +39,20 @@ def main(argv=None):
         parser.error("source-repo must be the original Research Opportunity Workbench checkout")
     if args.include_approved_internal_metadata and not args.approve_public_safe_export:
         parser.error("Internal metadata requires --approve-public-safe-export")
+    approved_internal_ids = set()
+    if args.include_approved_internal_metadata:
+        if not args.internal_allowlist:
+            parser.error("Internal metadata requires --internal-allowlist")
+        allowed = json.loads(Path(args.internal_allowlist).read_text(encoding="utf-8"))
+        if not isinstance(allowed, list) or not allowed or not all(
+            isinstance(x, str) and x for x in allowed
+        ):
+            parser.error("Internal allowlist must be a nonempty JSON list of IDs")
+        approved_internal_ids = set(allowed)
     if not 1 <= args.limit_achievements <= 100 or not 0 <= args.limit_datasets <= 100:
         parser.error("Source limits out of bounds")
     sys.path.insert(0, str(root))
-    from sqlalchemy import create_engine, select
+    from sqlalchemy import create_engine, select, or_, and_
     from sqlalchemy.orm import Session
     from backend.profile_database import evidence_inventory
     from backend.repository import TeamAchievement
@@ -72,12 +84,15 @@ def main(argv=None):
                 }
                 for obj in achievement_rows if obj.id in verified_ids
             ]
-            allowed_levels = (
-                ("public", "internal")
-                if args.include_approved_internal_metadata else ("public",)
+            allowed_filter = (
+                or_(
+                    CuspDataset.sensitivity == "public",
+                    and_(CuspDataset.sensitivity == "internal",
+                         CuspDataset.id.in_(approved_internal_ids))
+                ) if approved_internal_ids else (CuspDataset.sensitivity == "public")
             )
             public_assets = session.scalars(
-                select(CuspDataset).where(CuspDataset.sensitivity.in_(allowed_levels))
+                select(CuspDataset).where(allowed_filter)
                 .order_by(CuspDataset.category, CuspDataset.name)
                 .limit(args.limit_datasets)
             ).all()

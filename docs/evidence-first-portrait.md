@@ -124,3 +124,9 @@ and original files. A dataset remains labeled internal_metadata_approved in
 the portrait and internal in the downstream frontier snapshot, with
 access_verified=false. Consent to share metadata does NOT imply permission
 to open or analyze raw data.
+
+
+For internal metadata, the export additionally REQUIRES an explicitly
+curated --internal-allowlist /private/approved-ids.json containing dataset IDs,
+e.g. ["cusp_example_publicsafe_01"]. Not all internal datasets are exported.
+Review each approved metadata record individually before sending it to DeepSeek.
