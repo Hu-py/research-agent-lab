@@ -5,6 +5,8 @@ import os
 from contextlib import nullcontext
 import httpx
 
+from .supabase_auth import headers as supabase_headers, supabase_url
+
 
 class TracedModel:
     """Log per-Agent execution while keeping source documents out of traces by default."""
@@ -49,13 +51,7 @@ class TracedModel:
 
 
 def persist_run_to_supabase(run: dict) -> None:
-    """Writes only to lab_runs; never touches production profile or paper tables."""
-    url = os.getenv("SUPABASE_URL", "").rstrip("/")
-    secret = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
-    if not url or not secret:
-        raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required for --persist")
-    if not url.startswith("https://"):
-        raise RuntimeError("Supabase URL must use HTTPS")
+    """Save legacy baselines to the lab_runs table (not frontier table)."""
     payload = {
         "snapshot_id": run["snapshot_id"],
         "mode": run["experiment_mode"],
@@ -64,14 +60,16 @@ def persist_run_to_supabase(run: dict) -> None:
         "result": run,
     }
     with httpx.Client(timeout=30, follow_redirects=False) as client:
-        resp = client.post(
-            url + "/rest/v1/lab_runs",
-            headers={
-                "apikey": secret,
-                "Authorization": "Bearer " + secret,
-                "Content-Type": "application/json",
-                "Prefer": "return=minimal",
-            },
-            json=payload,
-        )
-        resp.raise_for_status()
+        try:
+            response = client.post(
+                supabase_url() + "/rest/v1/lab_runs",
+                headers=supabase_headers(prefer="return=minimal"),
+                json=payload,
+            )
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            raise RuntimeError(
+                f"Supabase lab_runs HTTP {exc.response.status_code}"
+            ) from None
+        except httpx.TransportError:
+            raise RuntimeError("Supabase baseline write transport error") from None

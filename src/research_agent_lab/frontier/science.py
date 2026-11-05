@@ -40,7 +40,9 @@ def validate_scientifically(snapshot: Snapshot, winner: dict,
                     "baselines (nonempty list), ablations (nonempty list), "
                     "split_strategy (nonempty), failure_criteria (nonempty), "
                     "evidence_limitations (nonempty list), "
-                    "data_feasible (boolean), proposed_field_mapping (object).",
+                    "data_feasible (boolean), proposed_field_mapping (object). "
+                    "If NO registered datasets exist, data_feasible=false and "
+                    "proposed_field_mapping={} because access cannot be assumed.",
         },
     )
     required = ("hypothesis_test", "primary_metric", "split_strategy", "failure_criteria")

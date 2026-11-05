@@ -5,6 +5,7 @@ import argparse
 import json
 import os
 import sys
+from contextlib import nullcontext
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -85,17 +86,32 @@ def main(argv: list[str] | None = None) -> int:
                 reserve = int(os.getenv("MAX_RESERVED_TOKENS", "350000"))
                 model = BudgetedModel(traced, max_calls=limit,
                                       max_reserved_tokens=reserve)
-                result = run_frontier(
-                    snapshot, model, memory,
-                    FrontierConfig(
-                        max_generations=args.max_generations,
-                        max_papers=args.max_papers,
-                        max_pairs_per_tournament=args.max_pairs,
-                        discover=args.discover,
-                    ),
-                    source_allowlist=registry,
-                    pilot_manifest=pilot,
+                root_ctx = (
+                    traced.client.start_as_current_observation(
+                        name="research-frontier-run", as_type="span",
+                        input={"snapshot_id": snapshot.snapshot_id,
+                               "provenance": snapshot.provenance,
+                               "max_generations": args.max_generations}
+                    ) if traced.client is not None else nullcontext()
                 )
+                with root_ctx as trace_root:
+                    result = run_frontier(
+                        snapshot, model, memory,
+                        FrontierConfig(
+                            max_generations=args.max_generations,
+                            max_papers=args.max_papers,
+                            max_pairs_per_tournament=args.max_pairs,
+                            discover=args.discover,
+                        ),
+                        source_allowlist=registry,
+                        pilot_manifest=pilot,
+                    )
+                    if trace_root is not None:
+                        trace_root.update(
+                            output={"run_id": result["run_id"],
+                                    "status": result["status"],
+                                    "model_calls": result["model_calls"]}
+                        )
                 report = {
                     "created_at": datetime.now(timezone.utc).isoformat(),
                     "mock": args.mock,

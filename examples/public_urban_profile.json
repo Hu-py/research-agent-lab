@@ -1,0 +1,12 @@
+{
+  "snapshot_id": "public-generic-urban-research-openalex-2026-11",
+  "provenance": "public_demo_profile",
+  "research_line": {
+    "id": "public-urban-spatial-generalization",
+    "name": "Urban spatial generalization and scientific reproducibility",
+    "problem": "Spatial machine learning for urban phenomena may appear accurate under random data splits but fail to generalize to new neighborhoods, cities, or periods. What falsifiable, literature-grounded research questions can quantify and explain these failures?",
+    "goals": "Discover independently testable urban-planning and computer-science research opportunities. Require held-out-area or held-out-time evaluation, credible baselines, and explicit uncertainty. This is a GENERIC PUBLIC methodological profile, not the user's team database profile."
+  },
+  "papers": [],
+  "datasets": []
+}

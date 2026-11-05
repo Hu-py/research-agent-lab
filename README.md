@@ -150,3 +150,32 @@ ingestion, scientifically validated novelty or final human-review GUI yet.
 Source validation checks bibliographic metadata and field IDs, not the truth
 of every scientific claim. Per-run limits are not a shared daily quota.
 See docs/frontier-methods.md for the methods and evaluation protocol.
+
+
+---
+
+## V0.3: GitHub Actions live experiment (explicit opt-in)
+
+The optional, **manually triggered** [Live Research Agent Lab workflow](.github/workflows/live-frontier.yml)
+runs real DeepSeek + OpenAlex inference, records a single nested Langfuse trace,
+and can store the result in a dedicated Supabase project.
+
+- No real API is invoked by the standard push/PR CI.
+- A preflight validates configured secrets and existing Supabase tables **before**
+  charging DeepSeek.
+- The initial input is a **generic, PUBLIC research profile** and is not the
+  user's actual database-derived team profile.
+- A separate **approved_secret** mode accepts an approved metadata-only
+  snapshot via a GitHub Actions Secret named RESEARCH_SNAPSHOT_JSON. No private
+  report artifact is uploaded in this mode.
+- Old service_role JWT and new sb_secret_* keys are supported. New keys use
+  only the apikey header, never Authorization Bearer.
+- Existing run/feedback summaries are restored from Supabase for the same
+  research line, so the strategy selection can improve across cloud executions.
+- No background deployment, automatic paid schedule or unbounded agent loop.
+
+**Start here:** [Cloud setup in Chinese](docs/live-cloud-setup.md).
+
+**Scientific caveat:** This is a technical execution pipeline, not a
+validated proof of better research ideas. LLM pairwise preferences and Elo
+scores are not independent scientific validation.
