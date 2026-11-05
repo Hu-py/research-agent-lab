@@ -20,6 +20,7 @@ dev = ["pytest>=8.0,<10.0"]
 
 [project.scripts]
 research-agent-lab = "research_agent_lab.cli:main"
+research-frontier = "research_agent_lab.frontier.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

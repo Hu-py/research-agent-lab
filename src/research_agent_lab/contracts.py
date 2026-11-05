@@ -31,9 +31,9 @@ class Dataset(BaseModel):
 class Snapshot(BaseModel):
     """Only explicitly approved paper metadata and allowed dataset descriptions."""
     snapshot_id: str = Field(min_length=1, max_length=140)
-    provenance: Literal["synthetic_demo", "approved_export"]
+    provenance: Literal["synthetic_demo", "approved_export", "openalex_discovered"]
     research_line: ResearchLine
-    papers: list[Paper] = Field(min_length=1, max_length=80)
+    papers: list[Paper] = Field(default_factory=list, max_length=80)
     datasets: list[Dataset] = Field(default_factory=list, max_length=100)
 
     @model_validator(mode="after")

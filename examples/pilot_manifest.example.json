@@ -1,0 +1,7 @@
+{
+  "dataset_id": "demo-data-1",
+  "path": "/absolute/path/to/private_file.csv",
+  "target": "synthetic_target",
+  "feature": "x",
+  "group": "segment_id"
+}

@@ -54,3 +54,99 @@ The JSON output includes agent candidates, objections, score trajectory, final s
 V0.1 **does not yet** connect live OpenAlex, automatically read the original Supabase database, schedule daily 80-paper jobs, implement human feedback-driven learning, or deploy a web UI. Those require safe integration and experimental evaluation, not an implicit side effect of running this prototype. The current MAX_MODEL_CALLS ceiling is **per run**, not an atomic daily budget.
 
 Full integration and security notes: docs/architecture.md.
+
+
+---
+
+# V0.2 — Profile-grounded frontier research laboratory
+
+**Preserves the V0.1 single / fixed / adaptive comparison workflows.**
+
+The new command is research-frontier. It implements:
+
+1. Knowledge discovery: optional LLM-planned OpenAlex retrieval from research
+   portrait and dataset metadata. Independent Agent jurors screen literature,
+   with a third adjudicator resolving disagreements.
+2. Hypothesis competition: 3 independent perspectives, similarity-guided
+   pairings, two-sided Elo debates and versioned refine/fuse candidates.
+3. Scientific validation: falsifiability review, registered-dataset checks,
+   baselines and ablations; optional fixed-code grouped-holdout CSV pilot.
+4. Experience evolution: persistent local memory of research and pilot failures,
+   with UCB policy updates from subsequent HUMAN feedback.
+
+A Supervisor decides whether to evolve, expand, rollback or verify within a
+bounded LangGraph. It does not bypass scientific review.
+
+## Install and run a no-key mock experiment
+
+    git clone https://github.com/Hu-py/research-agent-lab.git
+    cd research-agent-lab
+    python -m venv .venv
+    source .venv/bin/activate
+    pip install -e '.[dev,observability]'
+    python -m research_agent_lab.frontier.cli run \
+      --snapshot examples/synthetic_snapshot.json \
+      --mock --max-generations 1 \
+      --memory outputs/frontier-memory.sqlite \
+      --out outputs/frontier-demo.json
+    python -m pytest -q
+
+This mock example uses fabricated papers and deterministically fabricated
+research outputs: it verifies engineering behavior ONLY. The output contains
+all versions, pairwise decisions, supervisor steps and the full research
+package. Langfuse does not require configuration for offline tests.
+
+## Real DeepSeek scientific exploration
+
+Copy .env.example to a local .env file, and add DEEPSEEK_API_KEY. Optionally
+add LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY for redacted Agent traces.
+
+Prepare an approved_export JSON research snapshot with team research line,
+dataset FIELD METADATA, and approved bibliographic records (see example
+snapshot). Then run:
+
+    python -m research_agent_lab.frontier.cli run \
+      --snapshot /path/to/approved_snapshot.json \
+      --max-generations 1 --out outputs/frontier-real.json
+
+You may also opt into LLM-planned bibliographic discovery by setting
+OPENALEX_API_KEY and adding --discover, optionally followed by
+--source-registry examples/source_registry.json. This registry is merely a
+small example; a curated export from the existing academic source registry
+is preferable. For live OpenAlex discovery, the input snapshot may have an
+empty papers array and must NOT be synthetic.
+
+For a numeric local dataset, optionally add
+--pilot-manifest /path/to/pilot-manifest.json (format under examples/). The
+fixed code checks group-held-out baseline vs a simple one-feature regression.
+No LLM-written Python code is executed. If no approved local CSV is provided,
+the system produces an experimental PLAN rather than claiming execution.
+
+## Record human feedback only after the automatic pipeline
+
+Retrieve the run_id from the JSON and use:
+
+    python -m research_agent_lab.frontier.cli feedback \
+      --run-id YOUR_RUN_ID --reviewer-tag expert-01 \
+      --decision revise --novelty 70 --feasibility 60 \
+      --comment "The proposed ablation needs work"
+
+This appends experience and updates the next run's strategy selection.
+It is preference/bandit optimization, NOT neural reinforcement learning.
+
+## Isolated Supabase and Langfuse
+
+For Supabase, run sql/002_frontier_tables.sql in an independent test project.
+Use local SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY and run --persist.
+It stores only a restricted result summary, never raw pilot rows.
+
+Langfuse observations are metadata-only by default for privacy; detailed
+Agent debate is available in the local JSON output. Never commit live keys,
+raw sensitive research data or private traces to this public GitHub repository.
+
+**Limitations:** Supabase is an opt-in result sink, while experience memory is
+currently local SQLite; there is no cross-machine memory sync, scheduled paper
+ingestion, scientifically validated novelty or final human-review GUI yet.
+Source validation checks bibliographic metadata and field IDs, not the truth
+of every scientific claim. Per-run limits are not a shared daily quota.
+See docs/frontier-methods.md for the methods and evaluation protocol.
