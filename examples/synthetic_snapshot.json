@@ -1,0 +1,33 @@
+{
+  "snapshot_id": "synthetic-urban-research-v1",
+  "provenance": "synthetic_demo",
+  "research_line": {
+    "id": "demo-urban-graph",
+    "name": "Urban systems and graph learning (DEMO)",
+    "problem": "Synthetic teaching case: evaluate spatial generalization and uncertainty without implying a real research result.",
+    "goals": "Demonstrate LLM orchestration only."
+  },
+  "papers": [
+    {
+      "id": "demo-paper-1",
+      "title": "Synthetic spatial learning baseline A",
+      "abstract": "Fabricated example for software testing; do not cite as a real publication.",
+      "venue": "DEMO ONLY"
+    },
+    {
+      "id": "demo-paper-2",
+      "title": "Synthetic urban representation baseline B",
+      "abstract": "Fabricated example for software testing; do not cite as a real publication.",
+      "venue": "DEMO ONLY"
+    }
+  ],
+  "datasets": [
+    {
+      "id": "demo-data-1",
+      "name": "Synthetic road attributes",
+      "description": "Only column names are provided; no real dataset included.",
+      "fields": ["segment_id", "x", "y", "synthetic_target"],
+      "sensitivity": "public"
+    }
+  ]
+}

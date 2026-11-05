@@ -1,0 +1,30 @@
+name: Python smoke tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install project and test dependencies
+        run: python -m pip install -e '.[dev]'
+      - name: Test offline LangGraph flow
+        run: python -m pytest -q
+      - name: Run mock comparison
+        run: |
+          python -m research_agent_lab.cli --snapshot examples/synthetic_snapshot.json \
+            --mode all --mock --max-rounds 2 --out outputs/ci-demo.json
+          python -m json.tool outputs/ci-demo.json > /dev/null

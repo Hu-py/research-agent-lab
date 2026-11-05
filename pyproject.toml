@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "research-agent-lab"
+version = "0.1.0"
+description = "Observable, reproducible multi-agent research opportunity experiments"
+requires-python = ">=3.11"
+dependencies = [
+  "langgraph>=1.0,<2.0",
+  "httpx>=0.27,<1.0",
+  "pydantic>=2.7,<3.0",
+  "python-dotenv>=1.0,<2.0"
+]
+
+[project.optional-dependencies]
+observability = ["langfuse>=4.0,<6.0"]
+dev = ["pytest>=8.0,<10.0"]
+
+[project.scripts]
+research-agent-lab = "research_agent_lab.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
