@@ -42,7 +42,7 @@ def test_full_four_layers_and_lineage(tmp_path):
     assert len(report["matches"]) == 6
     assert len(report["supervisor_decisions"]) == 2
     assert len(report["screening"]["jurors"]) == 2
-    assert report["model_calls"] == 25
+    assert report["model_calls"] == 26
     assert any(x["parent_ids"] for x in report["lineage"])
     assert report["verification"]["primary_metric"]
 

@@ -24,7 +24,8 @@ def choose_next(model: BudgetedModel, *,
     # next supervisor: 1. Keep at least 1 scientific validator call reserved.
     min_budget_for_next_generation = 4 + 1 + 6 + 1 + reserved_verification_calls
     remaining = model.max_calls - model.usage.calls
-    if generation >= max_generations or remaining < min_budget_for_next_generation:
+    if ((generation < max_generations and remaining < min_budget_for_next_generation)
+            or (generation >= max_generations and remaining < 2)):
         return {"action": "verify", "reason": "Hard generation/call budget limit",
                 "hard_guard": True, "elo_margin": round(gap, 2)}
     raw = model.complete(
@@ -54,6 +55,9 @@ def choose_next(model: BudgetedModel, *,
         raise ValueError("Supervisor failed to explain decision")
     action = raw["action"]
     if action == "rollback" and generation == 0:
+        action = "verify"
+    # Generation cap blocks all NEW children, not safe rollback.
+    if generation >= max_generations and action in ("evolve", "expand"):
         action = "verify"
     # Poor differentiation alone does not imply evolution is useful: model
     # decides whether critique+revision has positive expected value.
