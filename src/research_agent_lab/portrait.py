@@ -42,8 +42,15 @@ class DataAsset(BaseModel):
     coverage: str = Field(default="", max_length=300)
     period: str = Field(default="", max_length=200)
     fields: list[str] = Field(default_factory=list, max_length=80)
-    sensitivity: Literal["public"] = "public"
+    sensitivity: Literal["public", "internal_metadata_approved"] = "public"
+    metadata_sharing_approved: bool = False
     access_verified: bool = False
+
+    @model_validator(mode="after")
+    def verify_internal_metadata_approval(self):
+        if self.sensitivity == "internal_metadata_approved" and not self.metadata_sharing_approved:
+            raise ValueError("Internal dataset metadata requires explicit sharing approval")
+        return self
 
 
 class ExternalPaper(BaseModel):
@@ -302,7 +309,8 @@ def snapshot_for_line(bundle: EvidenceBundle, portrait: dict,
     datasets = [Dataset(
         id=d_map[x].id, name=d_map[x].name,
         description=(d_map[x].description or "Metadata only; data access not verified"),
-        fields=d_map[x].fields, sensitivity="public"
+        fields=d_map[x].fields,
+        sensitivity=("internal" if d_map[x].sensitivity == "internal_metadata_approved" else "public")
     ) for x in line["dataset_ids"]]
     return Snapshot(
         snapshot_id="profile-" + evidence_hash(bundle)[:20] + "-" + line_id,

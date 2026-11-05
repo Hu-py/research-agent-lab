@@ -107,3 +107,20 @@ The code does not read paper full text by default, verify that the team
 implemented methods that appear in abstract/keywords, guarantee a dataset's
 legal access, establish originality, or demonstrate that adaptive agents
 outperform a controlled single-agent baseline.
+
+
+### Optional explicitly authorized INTERNAL metadata
+
+Many datasets in the original CUSP catalogue default to internal, not public.
+This does not mean their contents may be sent to external LLMs automatically.
+
+For data owners who expressly authorize sharing *metadata* for scientific
+planning, an operator may run the exporter with BOTH flags:
+
+    --approve-public-safe-export --include-approved-internal-metadata
+
+This excludes restricted entries, sample rows, paths, custodian identities,
+and original files. A dataset remains labeled internal_metadata_approved in
+the portrait and internal in the downstream frontier snapshot, with
+access_verified=false. Consent to share metadata does NOT imply permission
+to open or analyze raw data.

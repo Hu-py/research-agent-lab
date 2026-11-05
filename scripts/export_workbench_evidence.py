@@ -27,12 +27,16 @@ def main(argv=None):
     parser.add_argument("--limit-achievements", type=int, default=40)
     parser.add_argument("--limit-datasets", type=int, default=25)
     parser.add_argument("--limit-external", type=int, default=20)
+    parser.add_argument("--include-approved-internal-metadata", action="store_true",
+                        help="Explicit opt-in: share allowed internal DATASET METADATA, never raw data")
     args = parser.parse_args(argv)
     if not os.getenv("DATABASE_URL"):
         parser.error("Set DATABASE_URL in authorized original-workbench environment")
     root = Path(args.source_repo).resolve()
     if not (root / "backend" / "profile_database.py").is_file():
         parser.error("source-repo must be the original Research Opportunity Workbench checkout")
+    if args.include_approved_internal_metadata and not args.approve_public_safe_export:
+        parser.error("Internal metadata requires --approve-public-safe-export")
     if not 1 <= args.limit_achievements <= 100 or not 0 <= args.limit_datasets <= 100:
         parser.error("Source limits out of bounds")
     sys.path.insert(0, str(root))
@@ -68,8 +72,12 @@ def main(argv=None):
                 }
                 for obj in achievement_rows if obj.id in verified_ids
             ]
+            allowed_levels = (
+                ("public", "internal")
+                if args.include_approved_internal_metadata else ("public",)
+            )
             public_assets = session.scalars(
-                select(CuspDataset).where(CuspDataset.sensitivity == "public")
+                select(CuspDataset).where(CuspDataset.sensitivity.in_(allowed_levels))
                 .order_by(CuspDataset.category, CuspDataset.name)
                 .limit(args.limit_datasets)
             ).all()
@@ -82,7 +90,13 @@ def main(argv=None):
                     "coverage": item.coverage[:300],
                     "period": item.period[:200],
                     "fields": [],  # Original CUSP catalogue does not verify fields.
-                    "sensitivity": "public",
+                    "sensitivity": (
+                        "internal_metadata_approved"
+                        if item.sensitivity == "internal" else "public"
+                    ),
+                    "metadata_sharing_approved": (
+                        args.approve_public_safe_export and item.sensitivity == "internal"
+                    ),
                     "access_verified": False,
                 }
                 for item in public_assets
@@ -123,7 +137,10 @@ def main(argv=None):
                 "achievements": len(achievements),
                 "public_datasets": len(assets),
                 "external_approved_papers": len(external),
-                "source_datasets_omitted_if_internal_or_restricted": True,
+                "source_datasets_omitted_if_internal_or_restricted": (
+                    not args.include_approved_internal_metadata
+                ),
+                "raw_data_or_paths_exported": False,
                 "original_db_modified": False,
                 "path": str(path),
             }, ensure_ascii=False))
