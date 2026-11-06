@@ -133,3 +133,15 @@ weights using reinforcement learning.
 - Rank, critique, debate and toy pilot are NOT external validation.
 - Existing Supabase 003/004 tables remain sufficient; NO new migration
   is required for V0.6.
+
+## Free, pre-inference catalog check
+
+After configuring \`TEAM_DATA_CATALOG_JSON\`, run
+\`Verify Research Lab Connections (no AI calls)\` with
+\`check_approved_catalog=true\`. It validates the dataset-owner approval,
+per-record approvals, normalized IDs, privacy fields and merge collisions
+**without invoking DeepSeek or writing to Supabase**. It prints only counts.
+
+\`check_approved_catalog\` defaults to false. If no data owner has approved
+metadata yet, leave it false and keep \`use_approved_catalog=false\` in the
+live experiment.

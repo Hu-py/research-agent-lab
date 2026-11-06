@@ -13,6 +13,11 @@ on:
         type: boolean
         required: true
         default: true
+      check_approved_catalog:
+        description: "Validate explicitly approved private CUSP metadata Secret (no model calls)"
+        type: boolean
+        required: true
+        default: false
       emit_langfuse_smoke_trace:
         description: "Send one synthetic Langfuse trace (no DeepSeek, no research content)"
         type: boolean
@@ -34,6 +39,8 @@ jobs:
       WORKBENCH_API_URL: ${{ vars.WORKBENCH_API_URL }}
       WORKBENCH_EXPORT_TOKEN: ${{ secrets.WORKBENCH_EXPORT_TOKEN }}
       CHECK_WORKBENCH: ${{ inputs.check_workbench }}
+      CHECK_APPROVED_CATALOG: ${{ inputs.check_approved_catalog }}
+      TEAM_DATA_CATALOG_JSON: ${{ secrets.TEAM_DATA_CATALOG_JSON }}
       CHECK_LANGFUSE: ${{ inputs.check_langfuse }}
       EMIT_LANGFUSE_SMOKE_TRACE: ${{ inputs.emit_langfuse_smoke_trace }}
       LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}

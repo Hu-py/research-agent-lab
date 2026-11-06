@@ -10,6 +10,9 @@ from research_agent_lab.frontier.storage import check_frontier_supabase
 from research_agent_lab.portrait_store import check_profile_store
 from research_agent_lab.knowledge_store import check_graph_store
 from research_agent_lab.workbench_bridge import fetch_workbench_evidence
+from research_agent_lab.catalog_bridge import (
+    approved_catalog_from_json, merge_approved_catalog
+)
 from research_agent_lab.langfuse_preflight import (
     check_langfuse_connection, emit_synthetic_langfuse_trace
 )
@@ -25,13 +28,28 @@ def main() -> int:
         check_profile_store()
         check_graph_store()
         print("PASS: Supabase frontier, profile and knowledge graph tables (read-only)")
-        if os.getenv("CHECK_WORKBENCH", "false").lower() == "true":
+        check_catalog = os.getenv("CHECK_APPROVED_CATALOG", "false").lower() == "true"
+        if os.getenv("CHECK_WORKBENCH", "false").lower() == "true" or check_catalog:
             bundle = fetch_workbench_evidence()
             # Only aggregate counts are printed, no private names or source text.
             print("PASS: Workbench authorized export: achievements=" +
                   str(len(bundle.achievements)) + ", datasets=" +
                   str(len(bundle.datasets)) + ", literature=" +
                   str(len(bundle.external_papers)))
+            if check_catalog:
+                payload = os.getenv("TEAM_DATA_CATALOG_JSON", "")
+                if not payload:
+                    raise ValueError("APPROVED_CATALOG_SECRET_MISSING")
+                _, counts = merge_approved_catalog(
+                    bundle, approved_catalog_from_json(payload)
+                )
+                print(
+                    "PASS: approved CUSP catalog metadata; added="
+                    + str(counts["newly_added_metadata"])
+                    + " skipped_duplicates="
+                    + str(counts["existing_name_duplicates_skipped"])
+                    + "; no raw data access"
+                )
         else:
             print("SKIP: Workbench integration (CHECK_WORKBENCH=false)")
         emit_trace = os.getenv("EMIT_LANGFUSE_SMOKE_TRACE", "false").lower() == "true"
