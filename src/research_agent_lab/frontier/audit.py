@@ -115,6 +115,13 @@ def compare_runs(baseline: dict, treatment: dict) -> dict:
     if not isinstance(context_a, dict) or not isinstance(context_b, dict):
         reasons.append("MISSING_COMPARISON_CONTEXT")
     else:
+        required = {
+            "initial_snapshot_id", "model_name", "dataset_ids",
+            "retained_paper_ids", "max_papers", "max_pairs",
+            "requested_generations",
+        }
+        if not required <= set(context_a) or not required <= set(context_b):
+            reasons.append("INCOMPLETE_COMPARISON_CONTEXT")
         if context_a.get("initial_snapshot_id") != context_b.get("initial_snapshot_id"):
             reasons.append("DIFFERENT_PROFILE_SNAPSHOTS")
         if context_a.get("model_name") != context_b.get("model_name"):

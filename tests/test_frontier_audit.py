@@ -80,3 +80,10 @@ def test_store_reader_uses_new_secret_key(monkeypatch):
     assert got["id"]==uid
     assert seen[0].headers["apikey"]=="sb_secret_fake"
     assert seen[0].url.params["id"]=="eq."+uid
+
+
+def test_missing_context_fields_fail_closed():
+    a=make_run("a")
+    b=make_run("b",2)
+    del b["results"]["comparison_context"]["retained_paper_ids"]
+    assert "INCOMPLETE_COMPARISON_CONTEXT" in compare_runs(a,b)["blocking_reasons"]
