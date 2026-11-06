@@ -36,11 +36,13 @@ def validate_scientifically(snapshot: Snapshot, winner: dict,
             "snapshot": snapshot.model_dump(mode="json"),
             "winner": winner,
             "task": "Return structured plan: "
-                    "hypothesis_test (nonempty), primary_metric (nonempty), "
-                    "baselines (nonempty list), ablations (nonempty list), "
-                    "split_strategy (nonempty), failure_criteria (nonempty), "
-                    "evidence_limitations (nonempty list), "
+                    "hypothesis_test (nonempty JSON string), primary_metric (nonempty JSON string), "
+                    "baselines (nonempty array of nonempty strings), ablations (nonempty array of nonempty strings), "
+                    "split_strategy (nonempty JSON string), failure_criteria (nonempty JSON string), "
+                    "evidence_limitations (nonempty array of nonempty strings), "
                     "data_feasible (boolean), proposed_field_mapping (object). "
+                    "Use the exact top-level keys above. Express H0 and H1 together in the "
+                    "hypothesis_test string. Do not nest objects in text fields. "
                     "If NO registered datasets exist, data_feasible=false and "
                     "proposed_field_mapping={} because access cannot be assumed.",
         },
