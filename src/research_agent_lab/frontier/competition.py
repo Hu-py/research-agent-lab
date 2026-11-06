@@ -20,9 +20,87 @@ SYSTEM = (
 )
 
 
+def _canonicalize_candidate_lists(raw: object) -> object:
+    """Preserve singleton text as one item, never parse prose into invented facts.
+
+    Models sometimes emit "limitations": "small sample" instead of a JSON list.
+    This is a lossless shape adjustment. Dicts and ambiguous multi-value strings
+    are not guessed; they must pass a fresh model repair + hard validation.
+    """
+    if not isinstance(raw, dict):
+        return raw
+    cleaned = dict(raw)
+    for key in ("baselines", "paper_ids", "dataset_ids", "limitations"):
+        value = cleaned.get(key)
+        if isinstance(value, str) and 0 < len(value.strip()) <= 350:
+            cleaned[key] = [value.strip()]
+    return cleaned
+
+
+def _safe_candidate_error(exc: ValueError) -> str:
+    """Stable, content-free diagnostic for public CI logs."""
+    error = str(exc)
+    if error.startswith("Invalid list:") or error.startswith("Missing list values:"):
+        return "INVALID_LIST_STRUCTURE"
+    if "paper IDs absent" in error:
+        return "UNREGISTERED_PAPER_ID"
+    if "dataset IDs absent" in error:
+        return "UNREGISTERED_DATASET_ID"
+    if error.startswith("Invalid or missing text:"):
+        return "INVALID_REQUIRED_FIELD"
+    return "SCHEMA_VALIDATION_FAILED"
+
+
 def make_candidate(raw: dict, snapshot: Snapshot, *, identifier: str,
-                   origin: str, parent_ids: list[str], generation: int) -> dict:
-    record = validate_candidate(raw, snapshot, origin)
+                   origin: str, parent_ids: list[str], generation: int,
+                   model: BudgetedModel | None = None) -> dict:
+    """Validate candidate; optionally make one bounded, evidence-bound repair.
+
+    No arbitrary values are invented by Python, and repair cannot loosen the
+    citation/data registry. Model-call budgets apply to corrective calls.
+    """
+    candidate = _canonicalize_candidate_lists(raw)
+    try:
+        record = validate_candidate(candidate, snapshot, origin)
+    except ValueError as error:
+        if model is None:
+            raise
+        reason = _safe_candidate_error(error)
+        corrected = model.complete(
+            role="frontier_candidate_repair",
+            system=SYSTEM + (
+                " Repair the JSON STRUCTURE of one proposed hypothesis. "
+                "Only cite supplied paper and dataset IDs; do NOT invent sources, "
+                "numerical findings, baseline results or data access. "
+                "Do not replace an uncertain claim with a false confident one."
+            ),
+            payload={
+                "original_candidate": candidate,
+                "issue_code": reason,
+                "allowed_paper_ids": [p.id for p in snapshot.papers],
+                "allowed_dataset_ids": [d.id for d in snapshot.datasets],
+                "task": (
+                    "Return exactly one COMPLETE hypothesis JSON object with "
+                    "nonempty string fields title, question, mechanism, "
+                    "falsifiable_prediction, method and minimal_experiment. "
+                    "Return baselines (nonempty list of strings), paper_ids "
+                    "(nonempty list of registered IDs), dataset_ids (list of "
+                    "registered IDs, empty when none), limitations (list of "
+                    "short strings). All items must be strings <=350 chars. "
+                    "Preserve the scientific substance; explicitly state "
+                    "limitations when datasets are unavailable."
+                ),
+            },
+        )
+        try:
+            record = validate_candidate(
+                _canonicalize_candidate_lists(corrected), snapshot, origin
+            )
+        except ValueError as corrected_error:
+            raise ValueError(
+                "Candidate contract repair failed: " +
+                _safe_candidate_error(corrected_error)
+            ) from None
     record.update({
         "id": identifier,
         "origin": origin,
@@ -55,7 +133,7 @@ def create_seed_candidates(snapshot: Snapshot, model: BudgetedModel,
         )
         candidates.append(make_candidate(
             raw, snapshot, identifier=f"H{idx:03d}", origin=lens,
-            parent_ids=[], generation=0
+            parent_ids=[], generation=0, model=model
         ))
     return candidates
 
@@ -209,7 +287,8 @@ def evolve_hypotheses(pool: list[dict], snapshot: Snapshot, model: BudgetedModel
         )
         identifier = f"H{len(pool) + len(children) + 1:03d}"
         child = make_candidate(raw, snapshot, identifier=identifier, origin=method,
-                               parent_ids=[x["id"] for x in parents], generation=generation)
+                               parent_ids=[x["id"] for x in parents], generation=generation,
+                               model=model)
         children.append(child)
     return children
 
@@ -233,5 +312,5 @@ def expand_hypothesis(pool: list[dict], snapshot: Snapshot, model: BudgetedModel
     )
     return make_candidate(
         raw, snapshot, identifier=f"H{len(pool) + 1:03d}",
-        origin="boundary", parent_ids=[], generation=generation,
+        origin="boundary", parent_ids=[], generation=generation, model=model,
     )
