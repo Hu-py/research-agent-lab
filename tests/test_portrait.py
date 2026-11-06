@@ -92,11 +92,28 @@ def test_missing_team_output_rejected():
     b = bundle()
     class Omit(FakePortraitModel):
         def complete(self, *, role, system, payload):
+            # Even corrective model attempts intentionally omit the second
+            # team output. The system must never silently invent coverage.
+            if role == "portrait_contract_repair":
+                return {
+                    "research_lines": [{
+                        "id": "urban_transfer",
+                        "name": "Urban learning generalization",
+                        "problem": "Why do spatial models fail when extrapolating?",
+                        "achievement_ids": ["achievement-1"],
+                        "dataset_ids": ["asset-1"],
+                        "external_paper_ids": ["paper-1"],
+                        "methods": ["Grouped generalization benchmark"],
+                        "open_questions": ["Can a new region disprove the model?"],
+                    }],
+                    "unassigned_achievement_ids": [],
+                    "changes_from_previous": [],
+                }
             answer = super().complete(role=role, system=system, payload=payload)
             if role == "portrait_curator":
                 answer["research_lines"][0]["achievement_ids"] = ["achievement-1"]
             return answer
-    with pytest.raises(ValueError, match="covered or explicitly"):
+    with pytest.raises(ValueError, match="INCOMPLETE_ACHIEVEMENT_COVERAGE"):
         synthesize_portrait(b, BudgetedModel(Omit()), iterations=0)
 
 
