@@ -17,6 +17,7 @@ from .competition import create_seed_candidates, run_tournament, evolve_hypothes
 from .knowledge import independent_screen, discover_for_line
 from .memory import MemoryStore
 from .science import validate_scientifically, run_csv_pilot
+from .synthetic_pilot import run_synthetic_network_pilot, can_run_network_pilot
 from .supervisor import choose_next
 
 
@@ -26,10 +27,14 @@ class FrontierConfig:
     max_papers: int = 12
     max_pairs_per_tournament: int = 3
     discover: bool = False
+    minimum_generations: int = 0
+    synthetic_pilot: bool = False
 
     def __post_init__(self):
         if not 0 <= self.max_generations <= 3:
             raise ValueError("max_generations must be between 0 and 3")
+        if not 0 <= self.minimum_generations <= self.max_generations:
+            raise ValueError("minimum_generations must be between 0 and maximum_generations")
         if not 1 <= self.max_papers <= 40:
             raise ValueError("max_papers must be between 1 and 40")
         if not 1 <= self.max_pairs_per_tournament <= 6:
@@ -121,6 +126,7 @@ def build_frontier_graph(model: BudgetedModel, config: FrontierConfig, *,
             generation=state["generation"], max_generations=config.max_generations,
             memory_hints=state["memory_hints"],
             reserved_verification_calls=1,
+            minimum_generations=config.minimum_generations,
         )
         return {
             "decisions": state["decisions"] + [decision],
@@ -190,6 +196,17 @@ def build_frontier_graph(model: BudgetedModel, config: FrontierConfig, *,
             if pilot_manifest.get("dataset_id") not in winner["dataset_ids"]:
                 raise ValueError("Pilot CSV dataset is not referenced by winning hypothesis")
             pilot = run_csv_pilot(snapshot, pilot_manifest)
+        elif config.synthetic_pilot:
+            if can_run_network_pilot(snapshot.research_line.id):
+                pilot = run_synthetic_network_pilot()
+            else:
+                pilot = {
+                    "status": "skipped_not_applicable",
+                    "recipe": "toy_network_resilience_v1",
+                    "reason": "Fixed-code synthetic pilot only supports network-resilience lines",
+                    "experimental_claim_verified": False,
+                }
+        pilot_executed = pilot.get("status", "").startswith("executed_")
         return {
             "verification": validation,
             "pilot": pilot,
@@ -197,7 +214,7 @@ def build_frontier_graph(model: BudgetedModel, config: FrontierConfig, *,
                 "stage": "scientific_gate",
                 "winner": winner["id"],
                 "data_feasible_assessment": validation["data_feasible_assessment"],
-                "pilot_executed": bool(pilot),
+                "pilot_executed": pilot_executed,
             }],
         }
 
@@ -274,8 +291,12 @@ def run_frontier(snapshot: Snapshot, model: BudgetedModel, memory: MemoryStore,
         raise ValueError("At least one paper is required without live discovery")
     if len(snapshot.papers) > config.max_papers and not config.discover:
         raise ValueError("Snapshot exceeds max_papers; freeze a smaller controlled comparison")
-    # Ensure the worst-case first tournament and scientific gate can complete.
-    minimum_calls = 2 + 3 + 1 + 2 * min(3, config.max_pairs_per_tournament) + 1
+    # Reserve calls for each requested mandatory generation (2 evolution
+    # critiques, 2 child proposals, proximity + reversed duels, gate).
+    minimum_calls = (2 + 3 + 1 + 2 * min(3, config.max_pairs_per_tournament) + 1
+                     + config.minimum_generations * (
+                         4 + 1 + 2 * config.max_pairs_per_tournament
+                     ))
     if model.max_calls < minimum_calls:
         raise ValueError(f"At least {minimum_calls} model calls required for the initial experiment")
     line_id = snapshot.research_line.id

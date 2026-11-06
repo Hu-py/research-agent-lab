@@ -14,10 +14,10 @@ on:
           - workbench_sync
         default: public_demo
       max_generations:
-        description: "0 = cheapest initial paid test; 1 = one evolution generation"
+        description: "0 baseline, 1 adaptive generation, 2 mandatory critique/evolution rounds (costlier)"
         required: true
         type: choice
-        options: ["0", "1"]
+        options: ["0", "1", "2"]
         default: "0"
       max_papers:
         description: "Maximum real OpenAlex papers to screen"
@@ -30,7 +30,12 @@ on:
         required: true
         type: choice
         options: ["1", "2", "3"]
-        default: "2"
+        default: "3"
+      synthetic_pilot:
+        description: "Fixed-code toy network resilience pilot (no raw data, not validation)"
+        required: true
+        type: boolean
+        default: false
       save_supabase:
         description: "Write results into isolated lab_frontier_runs table"
         required: true
@@ -74,9 +79,10 @@ jobs:
       MAX_GENERATIONS_INPUT: ${{ inputs.max_generations }}
       MAX_PAPERS_INPUT: ${{ inputs.max_papers }}
       MAX_PAIRS_INPUT: ${{ inputs.max_pairs }}
+      RUN_SYNTHETIC_PILOT: ${{ inputs.synthetic_pilot }}
       SAVE_SUPABASE: ${{ inputs.save_supabase }}
       SAVE_KNOWLEDGE_GRAPH: ${{ inputs.save_knowledge_graph }}
-      MAX_MODEL_CALLS: "30"
+      MAX_MODEL_CALLS: ${{ inputs.max_generations == '2' && '55' || '30' }}
       MAX_RESERVED_TOKENS: "350000"
     steps:
       - name: Checkout vetted main branch

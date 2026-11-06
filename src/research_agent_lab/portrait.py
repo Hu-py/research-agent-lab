@@ -399,6 +399,7 @@ def snapshot_for_line(bundle: EvidenceBundle, portrait: dict,
         id=d_map[x].id, name=d_map[x].name,
         description=(d_map[x].description or "Metadata only; data access not verified"),
         fields=d_map[x].fields,
+        access_verified=d_map[x].access_verified,
         sensitivity=("internal" if d_map[x].sensitivity == "internal_metadata_approved" else "public")
     ) for x in line["dataset_ids"]]
     return Snapshot(

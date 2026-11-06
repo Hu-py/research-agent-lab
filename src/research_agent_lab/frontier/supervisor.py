@@ -16,7 +16,8 @@ def choose_next(model: BudgetedModel, *,
                 pool: list[dict], matches: list[dict], generation: int,
                 max_generations: int, memory_hints: list[dict],
                 min_elo_margin: float = 8.0,
-                reserved_verification_calls: int = 1) -> dict:
+                reserved_verification_calls: int = 1,
+                minimum_generations: int = 0) -> dict:
     """Supervisor always asks the model unless bound forces a safe finish."""
     ranked = sorted(pool, key=lambda c: (-c["elo"], c["id"]))
     gap = ranked[0]["elo"] - ranked[1]["elo"] if len(ranked) > 1 else 0
@@ -27,10 +28,22 @@ def choose_next(model: BudgetedModel, *,
     if generation == 0 and max_generations == 0:
         return {"action": "verify", "reason": "No evolution requested",
                 "hard_guard": True, "elo_margin": round(gap, 2)}
+    if not 0 <= minimum_generations <= max_generations:
+        raise ValueError("Invalid minimum evolution generations")
     if ((generation < max_generations and remaining < min_budget_for_next_generation)
             or (generation >= max_generations and remaining < 2)):
         return {"action": "verify", "reason": "Hard generation/call budget limit",
                 "hard_guard": True, "elo_margin": round(gap, 2)}
+    if generation < minimum_generations:
+        # A controlled two-round experiment specifies a minimum number of
+        # candidate-revision generations. Budget guards above take precedence.
+        return {
+            "action": "evolve",
+            "reason": "Operator-selected controlled hypothesis-evolution round",
+            "expected_gain": "Test whether critical revisions improve rankings",
+            "hard_guard": True,
+            "elo_margin": round(gap, 2),
+        }
     raw = model.complete(
         role="supervisor", system=SYSTEM,
         payload={

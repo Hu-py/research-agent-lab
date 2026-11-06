@@ -72,6 +72,12 @@ def validate_scientifically(snapshot: Snapshot, winner: dict,
         features = mapping.get("features", [])
         if not isinstance(features, list) or not set(features) <= set(listed.fields):
             raise ValueError("Science validation proposed unregistered features")
+    # Model self-assessment cannot grant access to data. A catalogue entry,
+    # field description or F-drive checkmark is NOT a permission grant.
+    legal_data_access = bool(winner["dataset_ids"]) and all(
+        data[asset_id].access_verified for asset_id in winner["dataset_ids"]
+    )
+    model_assessment = bool(raw["data_feasible"])
     return {
         "hypothesis_test": raw["hypothesis_test"][:1400],
         "primary_metric": raw["primary_metric"][:250],
@@ -80,7 +86,9 @@ def validate_scientifically(snapshot: Snapshot, winner: dict,
         "split_strategy": raw["split_strategy"][:650],
         "failure_criteria": raw["failure_criteria"][:700],
         "evidence_limitations": raw["evidence_limitations"][:12],
-        "data_feasible_assessment": raw["data_feasible"],
+        "data_feasible_assessment": model_assessment and legal_data_access,
+        "data_feasible_model_opinion": model_assessment,
+        "dataset_access_evidence_verified": legal_data_access,
         "proposed_field_mapping": mapping,
         "registered_dataset_metadata_only": True,
         "novelty_verified": False,

@@ -84,7 +84,7 @@ def main() -> int:
     private_path: Path | None = None
     try:
         evidence = _choice("EVIDENCE_SOURCE", {"public_demo", "approved_secret", "team_evidence", "workbench_sync"})
-        generations = _choice("MAX_GENERATIONS_INPUT", {"0", "1"})
+        generations = _choice("MAX_GENERATIONS_INPUT", {"0", "1", "2"})
         papers = _choice("MAX_PAPERS_INPUT", {"4", "6", "8"})
         pairs = _choice("MAX_PAIRS_INPUT", {"1", "2", "3"})
         persist = _choice("SAVE_SUPABASE", {"true", "false"}) == "true"
@@ -149,6 +149,12 @@ def main() -> int:
             "--max-pairs", pairs,
             "--out", str(output_path),
         ]
+        if generations == "2":
+            # Explicit two-round preset: no early Supervisor stop except
+            # an actual bounded budget guard, with immutable ancestors.
+            args.extend(["--min-generations", "2"])
+        if os.getenv("RUN_SYNTHETIC_PILOT", "false").lower() == "true":
+            args.append("--synthetic-pilot")
         if persist:
             args.append("--persist")
         status = frontier_main(args)

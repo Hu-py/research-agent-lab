@@ -38,6 +38,10 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--discover", action="store_true", help="Opt-in: live OpenAlex search")
     run.add_argument("--source-registry", default="", help="Optional JSON list of allowed venues")
     run.add_argument("--max-generations", type=int, default=1)
+    run.add_argument("--min-generations", type=int, default=0,
+                     help="Required controlled evolution rounds, subject to hard model budget")
+    run.add_argument("--synthetic-pilot", action="store_true",
+                     help="Run fixed-code toy resilience sanity pilot when applicable")
     run.add_argument("--max-papers", type=int, default=12)
     run.add_argument("--max-pairs", type=int, default=3)
     run.add_argument("--pilot-manifest", default="", help="Optional local CSV pilot manifest")
@@ -103,6 +107,8 @@ def main(argv: list[str] | None = None) -> int:
                         snapshot, model, memory,
                         FrontierConfig(
                             max_generations=args.max_generations,
+                            minimum_generations=args.min_generations,
+                            synthetic_pilot=args.synthetic_pilot,
                             max_papers=args.max_papers,
                             max_pairs_per_tournament=args.max_pairs,
                             discover=args.discover,

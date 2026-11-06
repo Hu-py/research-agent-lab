@@ -262,3 +262,23 @@ The live runner's initial auth check must never instantiate Langfuse(tracing_ena
 Run [Verify Research Lab Connections (no AI calls)](.github/workflows/verify-connections.yml) with check_langfuse=true and emit_langfuse_smoke_trace=true. This records one synthetic span named research-agent-lab-trace-smoke and flushes it. It does not call DeepSeek or upload private research. Find it under Tracing in the Langfuse US project after ingestion.
 
 auth_check() tests only credentials, not span upload. A successful synthetic smoke trace verifies the exporter. Historical runs with missing traces cannot be retroactively made visible; the complete research results remain in isolated Supabase tables.
+
+---
+
+## V0.6 — owner-reviewed CUSP catalog + controlled two-round evolution
+
+A private CUSP register (28 assets / six categories) informed the design; the
+file itself, custodians and sensitive source metadata are **not** stored here.
+
+- `catalog_bridge.py` and `catalog_cli.py` accept only explicit data-owner and
+  per-record approvals, export minimal sanitized metadata, and merge approved
+  dataset refs into existing workbench_sync evidence before the portrait.
+- `max_generations=2` requests two bounded critique/refine/fuse rounds.
+  Choose `max_pairs=3` for all seed-pair comparisons; tournament parents and
+  match results are retained. This uses more paid LLM calls.
+- `synthetic_pilot=true` can execute 108 toy network simulations (not real
+  scientific validation), and the access guard prevents registered metadata
+  from being mistaken for an accessible dataset.
+- No database schema changes required beyond existing 003/004.
+
+[Full configuration, caveats and paired-run study design](docs/cusp-v06-upgrade.md).

@@ -26,6 +26,7 @@ class Dataset(BaseModel):
     description: str = Field(default="", max_length=1200)
     fields: list[str] = Field(default_factory=list, max_length=80)
     sensitivity: Literal["public", "internal"] = "public"
+    access_verified: bool = False
 
 
 class Snapshot(BaseModel):
