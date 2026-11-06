@@ -10,10 +10,37 @@ from urllib.parse import urlsplit
 
 
 def supabase_url() -> str:
-    url = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
+    raw = os.getenv("SUPABASE_URL", "")
+    url = raw.strip().rstrip("/")
+    if not url:
+        raise ValueError(
+            "SUPABASE_URL_NOT_SET: GitHub Actions did not receive a project URL. "
+            "Add SUPABASE_URL under repository Actions Secrets or Variables."
+        )
+    # Classify errors without ever printing the provided URL, hostname,
+    # database password, user name, query string, or token.
     parsed = urlsplit(url)
-    if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment or parsed.path not in ("", "/"):
-        raise ValueError("SUPABASE_URL must be a bare HTTPS project URL")
+    if parsed.scheme in ("postgresql", "postgres", "postgresql+psycopg2"):
+        raise ValueError(
+            "SUPABASE_URL_IS_DATABASE_URI: paste the HTTPS Project URL from "
+            "Supabase Settings > Data API, not the PostgreSQL connection string."
+        )
+    if parsed.hostname in ("supabase.com", "www.supabase.com"):
+        raise ValueError(
+            "SUPABASE_URL_IS_DASHBOARD: paste the project's HTTPS API URL "
+            "(https://<project-ref>.supabase.co), not a dashboard link."
+        )
+    if parsed.scheme != "https" or not parsed.hostname:
+        raise ValueError(
+            "SUPABASE_URL_NOT_HTTPS: expected an HTTPS project API URL; "
+            "check that the configured value has no quotes or placeholders."
+        )
+    if (parsed.username or parsed.password or parsed.query or parsed.fragment
+            or parsed.path not in ("", "/") or parsed.port is not None):
+        raise ValueError(
+            "SUPABASE_URL_HAS_EXTRA_COMPONENTS: use only the HTTPS project "
+            "root URL, without /rest/v1, /dashboard, port or query parameters."
+        )
     return url
 
 

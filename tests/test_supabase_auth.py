@@ -40,3 +40,27 @@ def test_project_url_validation(monkeypatch):
     monkeypatch.setenv("SUPABASE_URL", "http://demo.supabase.co")
     with pytest.raises(ValueError):
         supabase_url()
+
+
+
+def test_missing_url_is_distinguished_from_invalid_url(monkeypatch):
+    monkeypatch.delenv("SUPABASE_URL", raising=False)
+    with pytest.raises(ValueError, match="SUPABASE_URL_NOT_SET"):
+        supabase_url()
+
+
+def test_database_uri_and_dashboard_link_have_safe_diagnostics(monkeypatch):
+    monkeypatch.setenv("SUPABASE_URL", "postgresql://admin:SUPER_SECRET@db.example.co:5432/mydb")
+    with pytest.raises(ValueError, match="SUPABASE_URL_IS_DATABASE_URI") as exc:
+        supabase_url()
+    assert "SUPER_SECRET" not in str(exc.value)
+    monkeypatch.setenv("SUPABASE_URL", "https://supabase.com/dashboard/project/abc")
+    with pytest.raises(ValueError, match="SUPABASE_URL_IS_DASHBOARD"):
+        supabase_url()
+
+
+def test_rest_path_or_query_string_rejected_without_echo(monkeypatch):
+    monkeypatch.setenv("SUPABASE_URL", "https://demo.supabase.co/rest/v1?apikey=PRIVATE")
+    with pytest.raises(ValueError, match="SUPABASE_URL_HAS_EXTRA_COMPONENTS") as exc:
+        supabase_url()
+    assert "PRIVATE" not in str(exc.value)

@@ -1,0 +1,36 @@
+name: Verify Research Lab Connections (no AI calls)
+
+on:
+  workflow_dispatch:
+    inputs:
+      check_workbench:
+        description: "Also check authorized original Workbench metadata endpoint"
+        type: boolean
+        required: true
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Read-only Supabase and Workbench preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL || vars.SUPABASE_URL }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      WORKBENCH_API_URL: ${{ vars.WORKBENCH_API_URL }}
+      WORKBENCH_EXPORT_TOKEN: ${{ secrets.WORKBENCH_EXPORT_TOKEN }}
+      CHECK_WORKBENCH: ${{ inputs.check_workbench }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install read-only preflight dependencies
+        run: python -m pip install -e .
+      - name: Check connectivity without any paid model calls
+        run: python -m research_agent_lab.frontier.preflight_cli

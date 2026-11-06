@@ -238,3 +238,19 @@ No Supabase migration or paid AI call is automatically executed as part of this 
 After deploying the dedicated read-only Render export endpoint, choose evidence_source=workbench_sync in the manual GitHub Actions workflow. Set WORKBENCH_API_URL as an Actions Variable and WORKBENCH_EXPORT_TOKEN as a Secret, with the matching RESEARCH_EXPORT_TOKEN and metadata-sharing opt-in on the original Render backend. This avoids pasting the full TEAM_EVIDENCE_JSON on every run. No raw dataset rows or production database credentials are copied to the Lab.
 
 See [integration instructions](docs/knowledge-graph.md) for the deployment and approval details.
+
+
+### Diagnosing cloud connections before spending on DeepSeek
+
+Use the [Verify Research Lab Connections (no AI calls)](.github/workflows/verify-connections.yml)
+workflow from GitHub Actions. It reads the SUPABASE_URL from **Repository
+Secrets OR Repository Variables**, checks existing 002/003/004 tables, and
+optionally validates the original Render Workbench metadata-export endpoint.
+It performs **no paid DeepSeek calls, OpenAlex requests, Langfuse writes or
+Supabase writes**.
+
+A missing SUPABASE_URL now reports SUPABASE_URL_NOT_SET separately from a
+database connection URI, dashboard URL, or URL with extra path/query fields.
+Expected URL format is https://YOUR_PROJECT_REF.supabase.co (the Supabase
+Project URL from Settings > Data API). Do not paste the PostgreSQL
+connection string, dashboard URL, /rest/v1 endpoint, quotes or placeholders.
