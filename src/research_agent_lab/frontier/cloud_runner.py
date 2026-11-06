@@ -21,6 +21,7 @@ from research_agent_lab.knowledge_graph import opportunity_graph
 from research_agent_lab.knowledge_store import check_graph_store, persist_graph
 from .storage import check_frontier_supabase
 from research_agent_lab.supabase_auth import headers, supabase_url
+from research_agent_lab.langfuse_preflight import check_langfuse_connection
 from .cli import main as frontier_main
 
 
@@ -74,6 +75,9 @@ def validate_cloud_config(*, persist: bool) -> None:
         # SQL/network preflight happens in CLI, BEFORE any LLM calls.
         supabase_url()
         headers()
+    if os.getenv("ENFORCE_LANGFUSE_AUTH", "false").lower() == "true":
+        # Real jobs must fail BEFORE paid inference if Langfuse would emit 401.
+        check_langfuse_connection()
 
 
 def main() -> int:

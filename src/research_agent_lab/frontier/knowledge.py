@@ -173,41 +173,106 @@ def independent_screen(snapshot: Snapshot, model: BudgetedModel,
         votes.append(answers)
         diagnostics.append({"juror": role, "votes": answers, "reasons": reasons})
     disputed = [p for p in papers if votes[0][p.id] != votes[1][p.id]]
-    tie_break = {}
+    disputed_ids = {p.id for p in disputed}
+    evidence_lookup = {p["id"]: p for p in evidence}
+    tie_break: dict[str, bool] = {}
+    adjudication_reasons: dict[str, str] = {}
+    adjudication_attempts = 0
+
+    def parse_adjudications(raw: object, allowed_ids: set[str]) -> dict[str, tuple[bool, str]]:
+        """Accept only unambiguous, justified votes for known paper IDs.
+
+        A short/malformed response is INCOMPLETE, not an implied affirmative
+        vote. Duplicates must be re-adjudicated.
+        """
+        items = raw.get("assessments") if isinstance(raw, dict) else None
+        if not isinstance(items, list):
+            return {}
+        accepted: dict[str, tuple[bool, str]] = {}
+        duplicates: set[str] = set()
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            paper_id = item.get("paper_id")
+            if paper_id not in allowed_ids:
+                continue
+            if paper_id in accepted:
+                duplicates.add(paper_id)
+                continue
+            reason = item.get("reason")
+            if not isinstance(item.get("retain"), bool) or not isinstance(reason, str) or not reason.strip():
+                continue
+            accepted[paper_id] = (item["retain"], reason[:400])
+        for paper_id in duplicates:
+            accepted.pop(paper_id, None)
+        return accepted
+
     if disputed:
         raw = model.complete(
             role="paper_adjudicator", system=SYSTEM + (
-                " Independently resolve disagreements. Cite only provided "
-                "records, and err on the side of transparent uncertainty."
+                " Resolve EVERY disagreement independently. Only supplied "
+                "paper IDs are valid. Always include a justification per ID. "
+                "Uncertainty is acceptable: retain=false when evidence is inadequate."
             ),
-            payload={"line": snapshot.research_line.model_dump(),
-                     "papers": [x for x in evidence if x["id"] in {p.id for p in disputed}],
-                     "juror_votes": diagnostics,
-                     "task": "Return assessments [{paper_id,retain:boolean,reason:string}]."},
+            payload={
+                "line": snapshot.research_line.model_dump(),
+                "papers": [evidence_lookup[p.id] for p in disputed],
+                "juror_votes": diagnostics,
+                "required_paper_ids": [p.id for p in disputed],
+                "task": "Return assessments EXACTLY once for EACH required_paper_id: "
+                        "[{paper_id,retain:boolean,reason:nonempty string}]."
+            },
         )
-        items = raw.get("assessments")
-        if not isinstance(items, list) or len(items) != len(disputed):
-            raise ValueError("Adjudication must cover every disagreement")
-        for item in items:
-            if not isinstance(item, dict) or item.get("paper_id") not in {p.id for p in disputed} or (
-                not isinstance(item.get("retain"), bool)
-            ):
-                raise ValueError("Malformed adjudication")
-            if item["paper_id"] in tie_break:
-                raise ValueError("Duplicate adjudication")
-            tie_break[item["paper_id"]] = item["retain"]
+        adjudication_attempts += 1
+        decided = parse_adjudications(raw, disputed_ids)
+        tie_break.update({k: v[0] for k, v in decided.items()})
+        adjudication_reasons.update({k: v[1] for k, v in decided.items()})
+        missing_ids = disputed_ids - set(tie_break)
+        if missing_ids:
+            # One targeted attempt; no unbounded loop and no changed paper IDs.
+            corrected = model.complete(
+                role="paper_adjudicator_repair",
+                system=SYSTEM + (
+                    " The previous adjudication missed required evidence records. "
+                    "Return ONLY the missing IDs below, EXACTLY once each. "
+                    "Retain=false if the metadata does not support relevance."
+                ),
+                payload={
+                    "line": snapshot.research_line.model_dump(),
+                    "papers": [evidence_lookup[p.id] for p in disputed
+                               if p.id in missing_ids],
+                    "juror_votes": diagnostics,
+                    "required_paper_ids": sorted(missing_ids),
+                    "task": "Return complete assessments for required_paper_ids "
+                            "as [{paper_id,retain:boolean,reason:nonempty string}].",
+                },
+            )
+            adjudication_attempts += 1
+            repaired = parse_adjudications(corrected, missing_ids)
+            tie_break.update({k: v[0] for k, v in repaired.items()})
+            adjudication_reasons.update({k: v[1] for k, v in repaired.items()})
+    unresolved_ids = sorted(disputed_ids - set(tie_break))
+    # Unresolved disagreements are EXCLUDED, never silently accepted/rejected
+    # as scientific certainty. Consensus-accepted papers remain eligible.
     keep = [p for p in papers if (
-        votes[0][p.id] if votes[0][p.id] == votes[1][p.id]
-        else tie_break[p.id]
+        (votes[0][p.id] and votes[1][p.id]) or
+        (p.id in tie_break and tie_break[p.id])
     )]
     if not keep:
-        raise ValueError("All papers rejected; halt and expand evidence instead of inventing citations")
+        raise ValueError(
+            "No literature survived consensus/justified adjudication; "
+            "expand evidence instead of inventing scientific citations"
+        )
     return snapshot.model_copy(update={"papers": keep}), {
         "screened_count": len(papers),
         "retained_count": len(keep),
         "disagreements": len(disputed),
         "jurors": diagnostics,
         "adjudicated_ids": list(tie_break),
+        "adjudication_reasons": adjudication_reasons,
+        "adjudication_attempts": adjudication_attempts,
+        "unresolved_disagreements": unresolved_ids,
+        "adjudication_complete": not unresolved_ids,
         "retraction_filter": "OpenAlex records with is_retracted=true excluded when discovered",
         "scientific_quality_verified": False,
     }

@@ -10,6 +10,7 @@ from research_agent_lab.frontier.storage import check_frontier_supabase
 from research_agent_lab.portrait_store import check_profile_store
 from research_agent_lab.knowledge_store import check_graph_store
 from research_agent_lab.workbench_bridge import fetch_workbench_evidence
+from research_agent_lab.langfuse_preflight import check_langfuse_connection
 
 
 def main() -> int:
@@ -31,6 +32,11 @@ def main() -> int:
                   str(len(bundle.external_papers)))
         else:
             print("SKIP: Workbench integration (CHECK_WORKBENCH=false)")
+        if os.getenv("CHECK_LANGFUSE", "false").lower() == "true":
+            check_langfuse_connection()
+            print("PASS: Langfuse project credentials and region")
+        else:
+            print("SKIP: Langfuse credential check")
         print("All connection checks passed. No DeepSeek, OpenAlex, Langfuse "
               "inference or Supabase writes were performed.")
         return 0
