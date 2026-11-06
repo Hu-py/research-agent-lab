@@ -39,9 +39,23 @@ def main() -> int:
             client = check_langfuse_connection()
             print("PASS: Langfuse project credentials and region; tracing enabled")
             if emit_trace:
-                emit_synthetic_langfuse_trace(client)
+                url = emit_synthetic_langfuse_trace(client)
                 print("SENT: synthetic Langfuse trace (no model calls). "
                       "Look for research-agent-lab-trace-smoke under Tracing.")
+                if url:
+                    print("SYNTHETIC_TRACE_URL: " + url)
+                    summary = os.getenv("GITHUB_STEP_SUMMARY")
+                    if summary:
+                        with open(summary, "a", encoding="utf-8") as handle:
+                            handle.write(
+                                "\n### Langfuse synthetic smoke trace\n\n"
+                                + "[View private project trace](" + url + ")\n\n"
+                                + "Only synthetic metadata; no research inputs. "
+                                + "Trace visibility may lag ingestion.\n"
+                            )
+                else:
+                    print("NOTICE: trace URL unavailable; search by "
+                          "research-agent-lab-trace-smoke name.")
             else:
                 print("SKIP: synthetic trace upload (opt-in unchecked)")
         else:

@@ -65,7 +65,7 @@ def check_langfuse_connection(*, factory=None) -> None:
     return client
 
 
-def emit_synthetic_langfuse_trace(client=None) -> None:
+def emit_synthetic_langfuse_trace(client=None) -> str | None:
     """Explicit test span only: no research data, no model/API inference.
 
     The UI may show the span after Langfuse finishes asynchronous ingestion.
@@ -80,4 +80,18 @@ def emit_synthetic_langfuse_trace(client=None) -> None:
         input={"synthetic": True, "purpose": "observability connectivity"},
     ) as span:
         span.update(output={"result": "synthetic-smoke", "llm_calls": 0})
+        url = client.get_trace_url()
     client.flush()
+    # Only expose a synthetic-trace URL on an approved Langfuse host. This
+    # URL is private to members of the matching project (not a public share).
+    if isinstance(url, str):
+        parsed = urlsplit(url)
+        if (parsed.scheme == "https" and parsed.hostname in {
+                "cloud.langfuse.com", "us.cloud.langfuse.com",
+                "jp.cloud.langfuse.com", "hipaa.cloud.langfuse.com"
+        } and parsed.path.startswith("/project/") and
+                "/traces/" in parsed.path and not parsed.query and
+                not parsed.fragment and not parsed.username and
+                not parsed.password and parsed.port is None):
+            return url
+    return None

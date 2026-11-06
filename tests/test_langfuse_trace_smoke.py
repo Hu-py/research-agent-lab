@@ -25,6 +25,9 @@ class StubClient:
     def start_as_current_observation(self, **kwargs):
         self.calls.append(("start", kwargs))
         return SyntheticObservation(self.calls)
+    def get_trace_url(self):
+        self.calls.append(("url",))
+        return "https://us.cloud.langfuse.com/project/demo/traces/0123456789abcdef0123456789abcdef"
     def flush(self):
         self.calls.append(("flush",))
 
@@ -53,7 +56,8 @@ def test_preflight_and_traces_use_same_enabled_get_client(monkeypatch):
     ))
     checked = check_langfuse_connection()
     assert checked is shared
-    emit_synthetic_langfuse_trace(checked)
+    trace_url = emit_synthetic_langfuse_trace(checked)
+    assert trace_url == "https://us.cloud.langfuse.com/project/demo/traces/0123456789abcdef0123456789abcdef"
     assert calls == ["get_client"]
     assert shared.calls[0] == ("auth",)
     assert shared.calls[1][0] == "start"
@@ -73,3 +77,11 @@ def test_noop_tracing_configuration_fails_before_model(monkeypatch,key,value,pat
     monkeypatch.setenv(key,value)
     with pytest.raises(RuntimeError, match=pattern):
         check_langfuse_connection(factory=lambda: StubClient())
+
+
+def test_synthetic_trace_does_not_print_untrusted_url(monkeypatch):
+    _env(monkeypatch)
+    class BadStub(StubClient):
+        def get_trace_url(self):
+            return "https://attacker.example/collect?token=should-never-log"
+    assert emit_synthetic_langfuse_trace(BadStub()) is None
