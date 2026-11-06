@@ -9,10 +9,15 @@ on:
         required: true
         default: true
       check_langfuse:
-        description: "Validate Langfuse API keys and region (no trace uploads)"
+        description: "Validate Langfuse keys/region without AI calls"
         type: boolean
         required: true
         default: true
+      emit_langfuse_smoke_trace:
+        description: "Send one synthetic Langfuse trace (no DeepSeek, no research content)"
+        type: boolean
+        required: true
+        default: false
 
 permissions:
   contents: read
@@ -30,6 +35,7 @@ jobs:
       WORKBENCH_EXPORT_TOKEN: ${{ secrets.WORKBENCH_EXPORT_TOKEN }}
       CHECK_WORKBENCH: ${{ inputs.check_workbench }}
       CHECK_LANGFUSE: ${{ inputs.check_langfuse }}
+      EMIT_LANGFUSE_SMOKE_TRACE: ${{ inputs.emit_langfuse_smoke_trace }}
       LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
       LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
       LANGFUSE_BASE_URL: ${{ vars.LANGFUSE_BASE_URL || 'https://cloud.langfuse.com' }}

@@ -254,3 +254,11 @@ database connection URI, dashboard URL, or URL with extra path/query fields.
 Expected URL format is https://YOUR_PROJECT_REF.supabase.co (the Supabase
 Project URL from Settings > Data API). Do not paste the PostgreSQL
 connection string, dashboard URL, /rest/v1 endpoint, quotes or placeholders.
+
+### Langfuse tracing: safe SDK singleton and no-model-call export smoke test
+
+The live runner's initial auth check must never instantiate Langfuse(tracing_enabled=False). The Langfuse Python ResourceManager is keyed by Public Key, and the disabled singleton can cause later get_client() observations to be no-ops despite successful auth. The check now uses the exact same tracing-enabled get_client() singleton as TracedModel.
+
+Run [Verify Research Lab Connections (no AI calls)](.github/workflows/verify-connections.yml) with check_langfuse=true and emit_langfuse_smoke_trace=true. This records one synthetic span named research-agent-lab-trace-smoke and flushes it. It does not call DeepSeek or upload private research. Find it under Tracing in the Langfuse US project after ingestion.
+
+auth_check() tests only credentials, not span upload. A successful synthetic smoke trace verifies the exporter. Historical runs with missing traces cannot be retroactively made visible; the complete research results remain in isolated Supabase tables.

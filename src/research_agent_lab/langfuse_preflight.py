@@ -27,17 +27,27 @@ def check_langfuse_connection(*, factory=None) -> None:
             "LANGFUSE_REGION: LANGFUSE_BASE_URL must match the project region "
             "(EU, US, Japan, or HIPAA). Check repository Actions Variables."
         )
+    if os.getenv("LANGFUSE_TRACING_ENABLED", "true").lower() == "false":
+        raise RuntimeError("LANGFUSE_TRACING_DISABLED: enable tracing for research runs")
+    if os.getenv("OTEL_SDK_DISABLED", "false").lower() == "true":
+        raise RuntimeError("LANGFUSE_OTEL_DISABLED: OpenTelemetry SDK is disabled")
+    try:
+        if float(os.getenv("LANGFUSE_SAMPLE_RATE", "1")) <= 0:
+            raise RuntimeError("LANGFUSE_ZERO_SAMPLE_RATE: no traces would be exported")
+    except ValueError:
+        raise RuntimeError("LANGFUSE_INVALID_SAMPLE_RATE") from None
     if factory is None:
         try:
-            from langfuse import Langfuse
+            from langfuse import get_client
         except ImportError:
             raise RuntimeError(
                 "LANGFUSE_SDK_MISSING: install research-agent-lab[observability]"
             ) from None
-        factory = lambda: Langfuse(
-            public_key=public, secret_key=secret,
-            base_url=url, tracing_enabled=False, timeout=10
-        )
+        # IMPORTANT: Use the SAME enabled singleton as TracedModel.
+        # Constructing Langfuse(tracing_enabled=False) here poisoned the
+        # LangfuseResourceManager singleton (keyed by public key), making all
+        # subsequent observations silently no-op despite valid auth_check.
+        factory = get_client
     try:
         client = factory()
         # SDK authentication endpoint returns True only for a valid pair
@@ -52,3 +62,22 @@ def check_langfuse_connection(*, factory=None) -> None:
         raise RuntimeError(
             "LANGFUSE_AUTH_FAILED: verify keys and matching Langfuse region."
         )
+    return client
+
+
+def emit_synthetic_langfuse_trace(client=None) -> None:
+    """Explicit test span only: no research data, no model/API inference.
+
+    The UI may show the span after Langfuse finishes asynchronous ingestion.
+    This verifies the actual exporter path, unlike auth_check alone.
+    """
+    if client is None:
+        from langfuse import get_client
+        client = get_client()
+    with client.start_as_current_observation(
+        name="research-agent-lab-trace-smoke",
+        as_type="span",
+        input={"synthetic": True, "purpose": "observability connectivity"},
+    ) as span:
+        span.update(output={"result": "synthetic-smoke", "llm_calls": 0})
+    client.flush()

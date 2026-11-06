@@ -10,7 +10,9 @@ from research_agent_lab.frontier.storage import check_frontier_supabase
 from research_agent_lab.portrait_store import check_profile_store
 from research_agent_lab.knowledge_store import check_graph_store
 from research_agent_lab.workbench_bridge import fetch_workbench_evidence
-from research_agent_lab.langfuse_preflight import check_langfuse_connection
+from research_agent_lab.langfuse_preflight import (
+    check_langfuse_connection, emit_synthetic_langfuse_trace
+)
 
 
 def main() -> int:
@@ -32,13 +34,22 @@ def main() -> int:
                   str(len(bundle.external_papers)))
         else:
             print("SKIP: Workbench integration (CHECK_WORKBENCH=false)")
+        emit_trace = os.getenv("EMIT_LANGFUSE_SMOKE_TRACE", "false").lower() == "true"
         if os.getenv("CHECK_LANGFUSE", "false").lower() == "true":
-            check_langfuse_connection()
-            print("PASS: Langfuse project credentials and region")
+            client = check_langfuse_connection()
+            print("PASS: Langfuse project credentials and region; tracing enabled")
+            if emit_trace:
+                emit_synthetic_langfuse_trace(client)
+                print("SENT: synthetic Langfuse trace (no model calls). "
+                      "Look for research-agent-lab-trace-smoke under Tracing.")
+            else:
+                print("SKIP: synthetic trace upload (opt-in unchecked)")
         else:
+            if emit_trace:
+                raise ValueError("Cannot emit a test trace without checking Langfuse")
             print("SKIP: Langfuse credential check")
-        print("All connection checks passed. No DeepSeek, OpenAlex, Langfuse "
-              "inference or Supabase writes were performed.")
+        print("All connection checks passed. No paid DeepSeek calls, "
+              "OpenAlex requests or Supabase writes were performed.")
         return 0
     except (ValueError, RuntimeError, OSError, TypeError, KeyError) as exc:
         # Sanitized errors from each preflight adapter intentionally omit
