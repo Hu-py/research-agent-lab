@@ -14,6 +14,7 @@ from pathlib import Path
 
 from research_agent_lab.contracts import Snapshot
 from research_agent_lab.portrait import EvidenceBundle
+from research_agent_lab.workbench_bridge import fetch_workbench_evidence
 from research_agent_lab.portrait_cli import main as portrait_main
 from research_agent_lab.portrait_store import check_profile_store
 from research_agent_lab.knowledge_graph import opportunity_graph
@@ -78,26 +79,29 @@ def validate_cloud_config(*, persist: bool) -> None:
 def main() -> int:
     private_path: Path | None = None
     try:
-        evidence = _choice("EVIDENCE_SOURCE", {"public_demo", "approved_secret", "team_evidence"})
+        evidence = _choice("EVIDENCE_SOURCE", {"public_demo", "approved_secret", "team_evidence", "workbench_sync"})
         generations = _choice("MAX_GENERATIONS_INPUT", {"0", "1"})
         papers = _choice("MAX_PAPERS_INPUT", {"4", "6", "8"})
         pairs = _choice("MAX_PAIRS_INPUT", {"1", "2", "3"})
         persist = _choice("SAVE_SUPABASE", {"true", "false"}) == "true"
         write_graph = os.getenv("SAVE_KNOWLEDGE_GRAPH", "false").lower() == "true"
-        if write_graph and (not persist or evidence != "team_evidence"):
+        if write_graph and (not persist or evidence not in ("team_evidence", "workbench_sync")):
             raise ValueError(
                 "Knowledge graph writes require team_evidence and save_supabase=true"
             )
         validate_cloud_config(persist=persist)
         if write_graph:
             check_graph_store()
-        if evidence == "team_evidence":
+        if evidence in ("team_evidence", "workbench_sync"):
             if not persist:
                 raise ValueError("team_evidence requires save_supabase=true for versioned memory")
-            raw = os.getenv("TEAM_EVIDENCE_JSON") or ""
-            if not raw:
-                raise ValueError("Missing TEAM_EVIDENCE_JSON GitHub Secret")
-            bundle = EvidenceBundle.model_validate_json(raw)
+            if evidence == "workbench_sync":
+                bundle = fetch_workbench_evidence()
+            else:
+                raw = os.getenv("TEAM_EVIDENCE_JSON") or ""
+                if not raw:
+                    raise ValueError("Missing TEAM_EVIDENCE_JSON GitHub Secret")
+                bundle = EvidenceBundle.model_validate_json(raw)
             # Validate BOTH destination tables prior to charging the model.
             check_profile_store()
             check_frontier_supabase()

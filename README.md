@@ -232,3 +232,9 @@ An evidence-grounded knowledge graph now links historic research problems, propo
 See [knowledge graph instructions](docs/knowledge-graph.md) for setup, queries and privacy safeguards.
 
 No Supabase migration or paid AI call is automatically executed as part of this commit.
+
+### Optional direct metadata sync from the original Workbench
+
+After deploying the dedicated read-only Render export endpoint, choose evidence_source=workbench_sync in the manual GitHub Actions workflow. Set WORKBENCH_API_URL as an Actions Variable and WORKBENCH_EXPORT_TOKEN as a Secret, with the matching RESEARCH_EXPORT_TOKEN and metadata-sharing opt-in on the original Render backend. This avoids pasting the full TEAM_EVIDENCE_JSON on every run. No raw dataset rows or production database credentials are copied to the Lab.
+
+See [integration instructions](docs/knowledge-graph.md) for the deployment and approval details.

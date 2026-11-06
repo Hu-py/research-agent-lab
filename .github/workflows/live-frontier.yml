@@ -11,6 +11,7 @@ on:
           - public_demo
           - approved_secret
           - team_evidence
+          - workbench_sync
         default: public_demo
       max_generations:
         description: "0 = cheapest initial paid test; 1 = one evolution generation"
@@ -66,6 +67,8 @@ jobs:
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       RESEARCH_SNAPSHOT_JSON: ${{ secrets.RESEARCH_SNAPSHOT_JSON }}
       TEAM_EVIDENCE_JSON: ${{ secrets.TEAM_EVIDENCE_JSON }}
+      WORKBENCH_API_URL: ${{ vars.WORKBENCH_API_URL }}
+      WORKBENCH_EXPORT_TOKEN: ${{ secrets.WORKBENCH_EXPORT_TOKEN }}
       EVIDENCE_SOURCE: ${{ inputs.evidence_source }}
       MAX_GENERATIONS_INPUT: ${{ inputs.max_generations }}
       MAX_PAPERS_INPUT: ${{ inputs.max_papers }}

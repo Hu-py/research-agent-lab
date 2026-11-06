@@ -59,3 +59,26 @@ Dataset metadata does not grant raw data access. Public and individually approve
 Owned team outputs and external literature are distinct kinds. Unresolved newly retrieved OpenAlex references are reported, not silently misclassified as verified literature.
 Original Research Opportunity Workbench production tables are untouched. No live team database import, schema execution, paid model run or automatic schedule has been performed in this update.
 An embeddings generator, cross-field semantic retrieval, graph-learning evaluation and a curator UI are not yet built.
+
+## Authorized, read-only Workbench synchronization (optional)
+
+The existing team_evidence mode accepts an approved GitHub Secret snapshot. The new workbench_sync mode fetches approved research metadata directly from the original Render service on each MANUALLY TRIGGERED experiment. It does not access the production database from GitHub.
+
+The original Workbench service must deploy the new GET /api/integrations/research-agent-lab/evidence endpoint and set:
+- RESEARCH_EXPORT_ENABLED=true
+- RESEARCH_EXPORT_LLM_SHARING_APPROVED=true, only after dataset owners approve sending filtered public metadata to external LLMs
+- RESEARCH_EXPORT_TOKEN=unique randomly generated token at least 32 characters long
+
+These are original Render SERVER environment variables, not client-side settings. This read-only endpoint emits verified team outputs, public dataset metadata and approved bibliography. It omits internal/restricted data, data holders, file paths, raw records, pending team works and credentials. It does not update production tables.
+
+In the Lab repository configure:
+- GitHub Actions Variable WORKBENCH_API_URL = HTTPS original Render API origin
+- GitHub Actions Secret WORKBENCH_EXPORT_TOKEN = matching dedicated token
+
+Keep the existing DeepSeek, Langfuse, OpenAlex and Supabase secrets. Do not reuse a general API_BEARER_TOKEN or team login session for this integration.
+
+Then manually select evidence_source=workbench_sync, save_supabase=true, and save_knowledge_graph=true. The workflow verifies the export, rebuilds or reuses the evidence-led portrait, saves source-linked graph relations and runs bounded hypothesis competition. Only a private temporary runner file holds the export; team content is not uploaded as a public Actions artifact.
+
+Deployment note: original Render services currently use feature branches with autoDeploy disabled; a code commit to main does not deploy this endpoint automatically. The actual service branch and a manual deployment must be reviewed separately.
+
+This is manual sync-on-run, not a scheduled background collector.
