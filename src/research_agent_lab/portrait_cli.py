@@ -20,6 +20,12 @@ from research_agent_lab.portrait import (
 from research_agent_lab.portrait_store import (
     check_profile_store, latest_portrait, persist_portrait,
 )
+from research_agent_lab.knowledge_graph import (
+    portrait_graph, problem_context,
+)
+from research_agent_lab.knowledge_store import (
+    check_graph_store, persist_graph,
+)
 
 SELECTION_SYSTEM = (
     "You are a scientific research portfolio planner. Choose an evidence-grounded "
@@ -29,7 +35,8 @@ SELECTION_SYSTEM = (
 )
 
 
-def select_research_line(portrait: dict, model: BudgetedModel) -> dict:
+def select_research_line(portrait: dict, model: BudgetedModel,
+                         *, knowledge_context: list[dict] | None = None) -> dict:
     lines = portrait.get("research_lines", [])
     if not lines:
         raise ValueError("No eligible research lines")
@@ -37,6 +44,7 @@ def select_research_line(portrait: dict, model: BudgetedModel) -> dict:
         role="research_line_selector", system=SELECTION_SYSTEM,
         payload={
             "lines": lines,
+            "knowledge_context": (knowledge_context or [])[:8],
             "task": "Choose one line_id from provided research lines. Return "
                     "line_id, reason (nonempty), and next_test (nonempty)."
         },
@@ -82,15 +90,38 @@ def generate(bundle: EvidenceBundle, model: BudgetedModel,
             if use_remote_store else {"version": None, "id": None}
         )
 
+    # Explicit graph neighborhoods, not an ungrounded bag of keywords.
+    # This pass is local/pure, so it runs without Supabase configured.
+    graph = portrait_graph(bundle, portrait)
+    candidates_context = [
+        problem_context(graph, item["id"], limit=12)
+        for item in portrait["research_lines"]
+    ]
+
     if target_line:
         if target_line not in {l["id"] for l in portrait["research_lines"]}:
             raise ValueError("Selected line is absent from new portrait")
         selected = {"line_id": target_line, "reason": "Operator-selected valid line",
                     "next_test": "Evidence-linked scientific discovery"}
     else:
-        selected = select_research_line(portrait, model)
+        selected = select_research_line(
+            portrait, model, knowledge_context=candidates_context
+        )
 
     snapshot = snapshot_for_line(bundle, portrait, selected["line_id"])
+    selected_context = next(x for x in candidates_context
+                            if x["problem"]["id"] ==
+                            "research_problem:" + selected["line_id"])
+    compact = [
+        x["relation"] + " " + x["target"] + " (" + x["status"] + ")"
+        for x in selected_context["relationships"][:9]
+    ]
+    if compact:
+        goals = (snapshot.research_line.goals +
+                 "\nProvisional knowledge graph links: " + "; ".join(compact))[:1000]
+        snapshot = snapshot.model_copy(update={
+            "research_line": snapshot.research_line.model_copy(update={"goals": goals})
+        })
     return {
         "profile": portrait,
         "recalibration": source,
@@ -103,6 +134,12 @@ def generate(bundle: EvidenceBundle, model: BudgetedModel,
             "external_papers": len(bundle.external_papers),
         },
         "official_team_profile_modified": False,
+        "knowledge_graph_preview": {
+            "counts": graph.counts(),
+            "selected_problem": selected_context,
+            "scope": bundle.bundle_id,
+            "materialized": False,
+        },
     }, snapshot
 
 
@@ -113,14 +150,20 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", required=True, help="Private local profile report")
     parser.add_argument("--snapshot-out", required=True, help="Private frontier snapshot")
     parser.add_argument("--persist", action="store_true", help="Save version in isolated Supabase")
+    parser.add_argument("--persist-graph", action="store_true",
+                        help="Also materialize evidence links in kg_* (requires SQL 004)")
     parser.add_argument("--refresh", action="store_true", help="Re-review unchanged evidence")
     parser.add_argument("--line-id", default="", help="Optional validated specific line")
     args = parser.parse_args(argv)
 
     try:
         bundle = EvidenceBundle.model_validate_json(Path(args.evidence).read_text(encoding="utf-8"))
+        if args.persist_graph and not args.persist:
+            raise ValueError("--persist-graph also requires --persist")
         if args.persist:
             check_profile_store()
+        if args.persist_graph:
+            check_graph_store()
         # Independent bounded budget so portrait cannot monopolize the later
         # scientific tournament. Total run costs are the sum of both stages.
         underlying = DeepSeekJSONModel()
@@ -133,6 +176,14 @@ def main(argv: list[str] | None = None) -> int:
             )
         finally:
             traced.close()
+        if args.persist_graph:
+            batch = portrait_graph(
+                bundle, report["profile"],
+                profile_version_id=report["profile_record"]["id"]
+            )
+            counts = persist_graph(batch)
+            report["knowledge_graph_preview"]["counts"] = counts
+            report["knowledge_graph_preview"]["materialized"] = True
         for path, content in (
             (Path(args.out), report),
             (Path(args.snapshot_out), snapshot.model_dump(mode="json")),

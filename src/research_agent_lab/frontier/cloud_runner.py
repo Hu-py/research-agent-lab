@@ -16,6 +16,8 @@ from research_agent_lab.contracts import Snapshot
 from research_agent_lab.portrait import EvidenceBundle
 from research_agent_lab.portrait_cli import main as portrait_main
 from research_agent_lab.portrait_store import check_profile_store
+from research_agent_lab.knowledge_graph import opportunity_graph
+from research_agent_lab.knowledge_store import check_graph_store, persist_graph
 from .storage import check_frontier_supabase
 from research_agent_lab.supabase_auth import headers, supabase_url
 from .cli import main as frontier_main
@@ -81,7 +83,14 @@ def main() -> int:
         papers = _choice("MAX_PAPERS_INPUT", {"4", "6", "8"})
         pairs = _choice("MAX_PAIRS_INPUT", {"1", "2", "3"})
         persist = _choice("SAVE_SUPABASE", {"true", "false"}) == "true"
+        write_graph = os.getenv("SAVE_KNOWLEDGE_GRAPH", "false").lower() == "true"
+        if write_graph and (not persist or evidence != "team_evidence"):
+            raise ValueError(
+                "Knowledge graph writes require team_evidence and save_supabase=true"
+            )
         validate_cloud_config(persist=persist)
+        if write_graph:
+            check_graph_store()
         if evidence == "team_evidence":
             if not persist:
                 raise ValueError("team_evidence requires save_supabase=true for versioned memory")
@@ -102,12 +111,15 @@ def main() -> int:
                 private_path = Path(source_file.name)
             private_path.chmod(0o600)
             private_snapshot = Path("outputs/derived-team-snapshot-private.json")
-            status = portrait_main([
+            portrait_args = [
                 "--evidence", str(private_path),
                 "--out", "outputs/team-portrait-private.json",
                 "--snapshot-out", str(private_snapshot),
                 "--persist"
-            ])
+            ]
+            if write_graph:
+                portrait_args.append("--persist-graph")
+            status = portrait_main(portrait_args)
             if status != 0:
                 return status
             path = private_snapshot
@@ -135,6 +147,19 @@ def main() -> int:
         if status != 0:
             return status
         result = json.loads(output_path.read_text(encoding="utf-8"))
+        if write_graph:
+            # The frontier run has already been inserted into lab_frontier_runs.
+            # Persist the version DAG with stable IDs only AFTER the run exists.
+            portrait_report = json.loads(
+                Path("outputs/team-portrait-private.json").read_text(encoding="utf-8")
+            )
+            run_graph = opportunity_graph(bundle, portrait_report["profile"], result)
+            graph_counts = persist_graph(run_graph)
+            print(
+                "Graph stored: "
+                + str(graph_counts["opportunity_versions"])
+                + " immutable opportunity versions"
+            )
         print(
             "Completed: run_id=" + str(result["run_id"]) +
             " status=" + str(result["status"]) +

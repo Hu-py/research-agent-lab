@@ -216,3 +216,19 @@ seed were inspected; neither should be represented as live team database rows.
 No private team portrait is ever uploaded to a public CI artifact. During
 a team_evidence run, output is stored only in the access-controlled Supabase
 research lab tables, and sensitive temporary files are deleted.
+
+---
+
+## V0.5 — Four-perspective research knowledge graph
+
+An evidence-grounded knowledge graph now links historic research problems, proposed methods, dataset assets, source publications and versioned future opportunities.
+
+- Apply [SQL 004](sql/004_research_knowledge_graph.sql) to the isolated Supabase project (requires 003).
+- To enable cloud storage, choose team_evidence, save_supabase=true, save_knowledge_graph=true in the manual GitHub Actions workflow. Default is false to avoid breaking existing runs.
+- Source references, edge evidence, epistemic status, immutable node versions and candidate ancestry are preserved.
+- The portrait-based next-topic selector receives bounded local graph neighborhoods as its input.
+- [SQL 005](sql/005_kg_embeddings_optional.sql) is optional. Wait until a 1536-dimensional embedding model is actually configured.
+
+See [knowledge graph instructions](docs/knowledge-graph.md) for setup, queries and privacy safeguards.
+
+No Supabase migration or paid AI call is automatically executed as part of this commit.

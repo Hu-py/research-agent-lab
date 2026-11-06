@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "research-agent-lab"
-version = "0.4.0"
+version = "0.5.0"
 description = "Observable, reproducible multi-agent research opportunity experiments"
 requires-python = ">=3.11"
 dependencies = [
@@ -22,6 +22,7 @@ dev = ["pytest>=8.0,<10.0"]
 research-agent-lab = "research_agent_lab.cli:main"
 research-frontier = "research_agent_lab.frontier.cli:main"
 research-portrait = "research_agent_lab.portrait_cli:main"
+research-kg = "research_agent_lab.knowledge_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

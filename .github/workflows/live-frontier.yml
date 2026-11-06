@@ -35,6 +35,11 @@ on:
         required: true
         type: boolean
         default: true
+      save_knowledge_graph:
+        description: "Write knowledge graph (team_evidence ONLY; requires SQL 004)"
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -66,6 +71,7 @@ jobs:
       MAX_PAPERS_INPUT: ${{ inputs.max_papers }}
       MAX_PAIRS_INPUT: ${{ inputs.max_pairs }}
       SAVE_SUPABASE: ${{ inputs.save_supabase }}
+      SAVE_KNOWLEDGE_GRAPH: ${{ inputs.save_knowledge_graph }}
       MAX_MODEL_CALLS: "30"
       MAX_RESERVED_TOKENS: "350000"
     steps:
