@@ -51,7 +51,8 @@ class BudgetedModel:
 class DeepSeekJSONModel:
     """Uses current DeepSeek chat-completions API, JSON mode and non-thinking output."""
     def __init__(self, api_key: str | None = None, model: str | None = None,
-                 api_url: str | None = None, timeout: float = 90.0):
+                 api_url: str | None = None, timeout: float = 90.0,
+                 max_output_tokens: int = 2200):
         self.key = api_key or os.getenv("DEEPSEEK_API_KEY", "")
         if not self.key:
             raise ValueError("DEEPSEEK_API_KEY missing; use --mock for an offline smoke test")
@@ -61,6 +62,9 @@ class DeepSeekJSONModel:
         self.url = api_url or os.getenv("DEEPSEEK_API_URL", "https://api.deepseek.com/chat/completions")
         if not self.url.startswith("https://"):
             raise ValueError("API URL must use HTTPS")
+        if not 500 <= max_output_tokens <= 8192:
+            raise ValueError("max_output_tokens must be between 500 and 8192")
+        self.max_output_tokens = max_output_tokens
         self.http = httpx.Client(timeout=timeout, follow_redirects=False)
         self.last_usage: dict = {}
 
@@ -76,7 +80,7 @@ class DeepSeekJSONModel:
                                  {"role": "user", "content": prompt}],
                     "response_format": {"type": "json_object"},
                     "thinking": {"type": "disabled"},
-                    "max_tokens": 2200,
+                    "max_tokens": self.max_output_tokens,
                     "stream": False,
                 },
             )

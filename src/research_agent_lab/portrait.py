@@ -125,6 +125,93 @@ def evidence_hash(bundle: EvidenceBundle) -> str:
     ).hexdigest()
 
 
+class PortraitStageError(ValueError):
+    """Fixed-code safe diagnostic: never includes paper titles or research content."""
+
+    def __init__(self, stage: str, code: str):
+        self.stage = stage
+        self.code = code
+        super().__init__(stage + ":" + code)
+
+
+def _safe_profile_code(exc: ValueError) -> str:
+    message = str(exc)
+    if "Every team achievement must be covered" in message:
+        return "INCOMPLETE_ACHIEVEMENT_COVERAGE"
+    if "nonexistent or wrong-ownership" in message:
+        return "UNKNOWN_EVIDENCE_REFERENCE"
+    if "research_lines" in message or "research line" in message.lower():
+        return "INVALID_RESEARCH_LINE_STRUCTURE"
+    if "critique" in message.lower():
+        return "INVALID_CRITIC_OUTPUT"
+    if "source" in message.lower() or "dataset" in message.lower():
+        return "INVALID_EVIDENCE_REFERENCE"
+    return "PORTRAIT_SCHEMA_VALIDATION"
+
+
+def _evidence_coverage(raw: object, bundle: EvidenceBundle) -> dict:
+    """Safe-for-LLM repair feedback; no source texts are copied into CI logs."""
+    lines = raw.get("research_lines", []) if isinstance(raw, dict) else []
+    lines = lines if isinstance(lines, list) else []
+    cited = set()
+    for line in lines:
+        if isinstance(line, dict) and isinstance(line.get("achievement_ids"), list):
+            cited.update(x for x in line["achievement_ids"] if isinstance(x, str))
+    unassigned = raw.get("unassigned_achievement_ids", []) if isinstance(raw, dict) else []
+    if not isinstance(unassigned, list):
+        unassigned = []
+    valid = {a.id for a in bundle.achievements}
+    return {
+        "missing_achievement_ids": sorted(valid - cited - set(x for x in unassigned if isinstance(x,str))),
+        "unknown_cited_ids": sorted(cited - valid),
+        "unassigned_not_in_source": sorted(set(x for x in unassigned if isinstance(x,str)) - valid),
+        "total_team_achievements": len(valid),
+        "number_of_draft_lines": len(lines),
+    }
+
+
+def _validate_with_repairs(raw: object, bundle: EvidenceBundle,
+                           model: BudgetedModel, *, stage: str,
+                           max_repairs: int = 2) -> dict:
+    """Independent validation; failed LLM drafts get bounded corrective prompts.
+
+    No heuristic replacement of the model's scientific grouping is allowed.
+    If repair fails, the run stops with a fixed non-sensitive diagnostic.
+    """
+    current = raw
+    for attempt in range(max_repairs + 1):
+        try:
+            return _validate_profile(current, bundle)
+        except ValueError as exc:
+            if attempt == max_repairs:
+                raise PortraitStageError(stage, _safe_profile_code(exc)) from None
+            feedback = _evidence_coverage(current, bundle)
+            # Invalid output stays local to the approved model request.
+            current = model.complete(
+                role="portrait_contract_repair",
+                system=PROFILE_SYSTEM + (
+                    " Your previous draft failed a deterministic evidence contract. "
+                    "Correct only errors; do not invent team capabilities or sources."
+                ),
+                payload={
+                    "original_draft": current,
+                    "validation_error": str(exc)[:250],
+                    "repair_feedback": feedback,
+                    "allowed_achievement_ids": [a.id for a in bundle.achievements],
+                    "allowed_dataset_ids": [d.id for d in bundle.datasets],
+                    "allowed_external_paper_ids": [p.id for p in bundle.external_papers],
+                    "task": (
+                        "Return the COMPLETE corrected JSON object, not a patch. "
+                        "Use 1..8 lowercase slug research lines. Every team "
+                        "achievement MUST be in a line or unassigned_achievement_ids, "
+                        "but not both. Do not invent data assets or external papers. "
+                        "Preserve changes_from_previous as a string list."
+                    ),
+                },
+            )
+    raise AssertionError("Unreachable validation loop")
+
+
 PROFILE_SYSTEM = (
     "You are an expert scientific research capability analyst. Construct a "
     "research-team portrait grounded ONLY in the evidence bundle. Titles and "
@@ -187,7 +274,7 @@ def _validate_profile(raw: object, bundle: EvidenceBundle) -> dict:
             "id": line_id,
             "name": name.strip(),
             "problem": problem.strip(),
-            "achievement_ids": refs[:25],
+            "achievement_ids": refs,
             "dataset_ids": ds[:15],
             "external_paper_ids": ext[:15],
             "methods": [x[:170] for x in methods[:12]],
@@ -241,7 +328,7 @@ def synthesize_portrait(bundle: EvidenceBundle, model: BudgetedModel, *,
             ),
         },
     )
-    portrait = _validate_profile(raw, bundle)
+    portrait = _validate_with_repairs(raw, bundle, model, stage="curator")
     critique_history = []
     for round_number in range(iterations):
         critical = model.complete(
@@ -276,7 +363,9 @@ def synthesize_portrait(bundle: EvidenceBundle, model: BudgetedModel, *,
                         "Keep all evidence links valid and reject unsupported claims."
             },
         )
-        portrait = _validate_profile(revised, bundle)
+        portrait = _validate_with_repairs(
+            revised, bundle, model, stage="reviser", max_repairs=1
+        )
     portrait["critique_history"] = critique_history
     portrait["generated_at"] = datetime.now(timezone.utc).isoformat()
     portrait["version_status"] = "provisional_not_official"

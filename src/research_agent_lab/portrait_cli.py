@@ -16,6 +16,7 @@ from research_agent_lab.model import BudgetedModel, DeepSeekJSONModel
 from research_agent_lab.integrations import TracedModel
 from research_agent_lab.portrait import (
     EvidenceBundle, evidence_hash, synthesize_portrait, snapshot_for_line,
+    PortraitStageError,
 )
 from research_agent_lab.portrait_store import (
     check_profile_store, latest_portrait, persist_portrait,
@@ -166,10 +167,12 @@ def main(argv: list[str] | None = None) -> int:
             check_graph_store()
         # Independent bounded budget so portrait cannot monopolize the later
         # scientific tournament. Total run costs are the sum of both stages.
-        underlying = DeepSeekJSONModel()
+        # 36+ source records and complete ID coverage often exceed the generic
+        # 2,200-token hypothesis limit. This applies ONLY to portrait calls.
+        underlying = DeepSeekJSONModel(max_output_tokens=6000)
         traced = TracedModel(underlying)
         try:
-            model = BudgetedModel(traced, max_calls=7, max_reserved_tokens=45500)
+            model = BudgetedModel(traced, max_calls=9, max_reserved_tokens=65000)
             report, snapshot = generate(
                 bundle, model, use_remote_store=args.persist,
                 refresh=args.refresh, target_line=args.line_id or None
@@ -200,8 +203,20 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
     except (ValueError, OSError, RuntimeError, TypeError, KeyError) as exc:
-        print("Portrait synthesis error: " + type(exc).__name__ +
-              " (see private local validation or database configuration)", file=sys.stderr)
+        # Never expose team titles, IDs, prompts, raw model JSON or credentials
+        # in a public GitHub Actions log.
+        if isinstance(exc, PortraitStageError):
+            stage, code = exc.stage, exc.code
+        elif isinstance(exc, ValueError):
+            stage, code = "input_or_selection", "INVALID_GENERATED_INPUT"
+        elif isinstance(exc, RuntimeError):
+            stage, code = "model_or_store", "MODEL_OR_STORAGE_FAILURE"
+        else:
+            stage, code = "io", "PORTRAIT_RUNTIME_ERROR"
+        print(
+            "Portrait synthesis error: stage=" + stage + " code=" + code +
+            "; no private source content logged", file=sys.stderr
+        )
         return 2
 
 
