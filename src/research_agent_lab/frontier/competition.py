@@ -184,7 +184,7 @@ def proximity_pairs(candidates: list[dict], model: BudgetedModel,
 
 
 def _duel(model: BudgetedModel, left: dict, right: dict) -> dict:
-    raw = model.complete(
+    request = dict(
         role="pairwise_judge", system=SYSTEM + (
             " Compare two competing hypotheses using explicit scientific criteria: "
             "testability, evidence relevance, methodological rigor, feasibility and "
@@ -194,9 +194,20 @@ def _duel(model: BudgetedModel, left: dict, right: dict) -> dict:
             "left": {k: v for k, v in left.items() if k not in ("elo", "status")},
             "right": {k: v for k, v in right.items() if k not in ("elo", "status")},
             "task": f"Return winner_id ('{left['id']}', '{right['id']}' or 'tie'), "
-                    "reason (nonempty), and caveat (nonempty).",
+                    "reason and caveat. All three values must be nonempty JSON strings.",
         },
     )
+    for attempt in range(2):
+        raw = model.complete(**request)
+        try:
+            return _parse_duel(raw, left, right)
+        except ValueError as exc:
+            if attempt:
+                raise
+            request["payload"]["format_feedback"] = str(exc)
+
+
+def _parse_duel(raw: dict, left: dict, right: dict) -> dict:
     winner = raw.get("winner_id")
     if winner not in (left["id"], right["id"], "tie"):
         raise ValueError("Pairwise judge returned an unknown winner")
