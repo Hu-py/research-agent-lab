@@ -18,6 +18,11 @@ on:
         type: boolean
         required: true
         default: false
+      check_llm_replay_cache:
+        description: "Check optional SQL 006 model response replay table and key (read only)"
+        type: boolean
+        required: true
+        default: false
       emit_langfuse_smoke_trace:
         description: "Send one synthetic Langfuse trace (no DeepSeek, no research content)"
         type: boolean
@@ -40,6 +45,7 @@ jobs:
       WORKBENCH_EXPORT_TOKEN: ${{ secrets.WORKBENCH_EXPORT_TOKEN }}
       CHECK_WORKBENCH: ${{ inputs.check_workbench }}
       CHECK_APPROVED_CATALOG: ${{ inputs.check_approved_catalog }}
+      CHECK_LLM_REPLAY_CACHE: ${{ inputs.check_llm_replay_cache }}
       TEAM_DATA_CATALOG_JSON: ${{ secrets.TEAM_DATA_CATALOG_JSON }}
       CHECK_LANGFUSE: ${{ inputs.check_langfuse }}
       EMIT_LANGFUSE_SMOKE_TRACE: ${{ inputs.emit_langfuse_smoke_trace }}

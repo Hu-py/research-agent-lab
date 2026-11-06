@@ -22,6 +22,7 @@ from research_agent_lab.knowledge_store import check_graph_store, persist_graph
 from .storage import check_frontier_supabase
 from research_agent_lab.supabase_auth import headers, supabase_url
 from research_agent_lab.langfuse_preflight import check_langfuse_connection
+from research_agent_lab.response_cache import configured_cache
 from .cli import main as frontier_main
 
 
@@ -94,6 +95,15 @@ def main() -> int:
                 "Knowledge graph writes require team_evidence and save_supabase=true"
             )
         validate_cloud_config(persist=persist)
+        if os.getenv("LLM_REPLAY_CACHE_ENABLED", "false").lower() == "true":
+            if not persist:
+                raise ValueError("Replay cache requires isolated Supabase persistence")
+            store = configured_cache()
+            try:
+                print("PASS: optional private replay cache table (no model calls)")
+            finally:
+                if store is not None:
+                    store.close()
         if write_graph:
             check_graph_store()
         if evidence in ("team_evidence", "workbench_sync"):
@@ -178,7 +188,9 @@ def main() -> int:
             "Completed: run_id=" + str(result["run_id"]) +
             " status=" + str(result["status"]) +
             " generations=" + str(result["generation_count"]) +
-            " model_calls=" + str(result["model_calls"])
+            " model_calls=" + str(result["model_calls"]) +
+            " paid_provider_calls=" + str(result.get("provider_calls", result["model_calls"])) +
+            " cache_hits=" + str(result.get("cache_hits", 0))
         )
         print("Langfuse: open the Tracing page to inspect redacted agent calls.")
         if persist:
@@ -190,7 +202,9 @@ def main() -> int:
                 "",
                 "- Run ID: " + str(result["run_id"]),
                 "- Source: " + evidence,
-                "- Model calls: " + str(result["model_calls"]),
+                "- Logical model calls: " + str(result["model_calls"]),
+                "- Actual provider calls: " + str(result.get("provider_calls", result["model_calls"])),
+                "- Replay cache hits: " + str(result.get("cache_hits", 0)),
                 "- Generations: " + str(result["generation_count"]),
                 "- Status: " + str(result["status"]),
                 "",

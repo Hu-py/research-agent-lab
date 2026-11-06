@@ -16,6 +16,7 @@ from research_agent_lab.catalog_bridge import (
 from research_agent_lab.langfuse_preflight import (
     check_langfuse_connection, emit_synthetic_langfuse_trace
 )
+from research_agent_lab.response_cache import configured_cache
 
 
 def main() -> int:
@@ -53,6 +54,17 @@ def main() -> int:
         else:
             print("SKIP: Workbench integration (CHECK_WORKBENCH=false)")
         emit_trace = os.getenv("EMIT_LANGFUSE_SMOKE_TRACE", "false").lower() == "true"
+        if os.getenv("CHECK_LLM_REPLAY_CACHE", "false").lower() == "true":
+            # This checks only the isolated optional table and server-side role.
+            os.environ["LLM_REPLAY_CACHE_ENABLED"] = "true"
+            store = configured_cache()
+            try:
+                print("PASS: optional private LLM response replay cache (read-only)")
+            finally:
+                if store is not None:
+                    store.close()
+        else:
+            print("SKIP: optional replay cache")
         if os.getenv("CHECK_LANGFUSE", "false").lower() == "true":
             client = check_langfuse_connection()
             print("PASS: Langfuse project credentials and region; tracing enabled")

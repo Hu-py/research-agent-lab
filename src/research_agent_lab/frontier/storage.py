@@ -49,6 +49,7 @@ def persist_frontier_run(result: dict) -> None:
             "supervisor_decisions": result.get("supervisor_decisions", []),
             "screening": result.get("screening", {}),
             "knowledge": result.get("knowledge", {}),
+            "comparison_context": result.get("comparison_context", {}),
             "event_log": result.get("event_log", []),
         }
     }

@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 
 from research_agent_lab.model import BudgetedModel, DeepSeekJSONModel
 from research_agent_lab.integrations import TracedModel
+from research_agent_lab.response_cache import CachedModel, configured_cache
 from research_agent_lab.portrait import (
     EvidenceBundle, evidence_hash, synthesize_portrait, snapshot_for_line,
     PortraitStageError,
@@ -171,14 +172,24 @@ def main(argv: list[str] | None = None) -> int:
         # 2,200-token hypothesis limit. This applies ONLY to portrait calls.
         underlying = DeepSeekJSONModel(max_output_tokens=6000)
         traced = TracedModel(underlying)
+        cache = None
         try:
-            model = BudgetedModel(traced, max_calls=9, max_reserved_tokens=65000)
+            cache = configured_cache(default_scope=bundle.bundle_id)
+            active = CachedModel(traced, cache) if cache is not None else traced
+            model = BudgetedModel(active, max_calls=9, max_reserved_tokens=65000)
             report, snapshot = generate(
                 bundle, model, use_remote_store=args.persist,
                 refresh=args.refresh, target_line=args.line_id or None
             )
+            report["portrait_call_usage"] = {
+                "logical_calls": model.usage.calls,
+                "provider_calls": model.usage.provider_calls,
+                "cache_hits": model.usage.cache_hits,
+            }
         finally:
             traced.close()
+            if cache is not None:
+                cache.close()
         if args.persist_graph:
             batch = portrait_graph(
                 bundle, report["profile"],

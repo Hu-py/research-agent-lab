@@ -266,6 +266,7 @@ def independent_screen(snapshot: Snapshot, model: BudgetedModel,
     return snapshot.model_copy(update={"papers": keep}), {
         "screened_count": len(papers),
         "retained_count": len(keep),
+        "retained_paper_ids": sorted(p.id for p in keep),
         "disagreements": len(disputed),
         "jurors": diagnostics,
         "adjudicated_ids": list(tie_break),

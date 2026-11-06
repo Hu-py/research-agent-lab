@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 from research_agent_lab.contracts import Snapshot
 from research_agent_lab.model import BudgetedModel, DeepSeekJSONModel
 from research_agent_lab.integrations import TracedModel
+from research_agent_lab.response_cache import CachedModel, configured_cache
 
 from .engine import FrontierConfig, run_frontier
 from .memory import MemoryStore
@@ -89,10 +90,14 @@ def main(argv: list[str] | None = None) -> int:
                 hydrate_recent_memory(memory, snapshot.research_line.id)
             underlying = FrontierMockModel() if args.mock else DeepSeekJSONModel()
             traced = TracedModel(underlying)
+            cache = None
             try:
+                cache = (configured_cache(default_scope="research-team")
+                         if not args.mock else None)
+                active = CachedModel(traced, cache) if cache is not None else traced
                 limit = int(os.getenv("MAX_MODEL_CALLS", "30"))
                 reserve = int(os.getenv("MAX_RESERVED_TOKENS", "350000"))
-                model = BudgetedModel(traced, max_calls=limit,
+                model = BudgetedModel(active, max_calls=limit,
                                       max_reserved_tokens=reserve)
                 root_ctx = (
                     traced.client.start_as_current_observation(
@@ -145,6 +150,8 @@ def main(argv: list[str] | None = None) -> int:
                 return 0
             finally:
                 traced.close()
+                if cache is not None:
+                    cache.close()
         finally:
             memory.close()
     except (ValueError, RuntimeError, OSError, KeyError, TypeError) as exc:

@@ -8,6 +8,7 @@ import json
 import uuid
 from dataclasses import dataclass
 from typing import Callable, TypedDict
+import os
 
 from langgraph.graph import START, END, StateGraph
 
@@ -330,6 +331,24 @@ def run_frontier(snapshot: Snapshot, model: BudgetedModel, memory: MemoryStore,
         "line_id": line_id,
         "chosen_strategy": strategy,
         "memory_hints_used": len(hints),
+        "comparison_context": {
+            "model_name": ("mock" if model.underlying.__class__.__name__ == "FrontierMockModel"
+                           else os.getenv("DEEPSEEK_MODEL", "deepseek-flash")),
+            "initial_snapshot_id": snapshot.snapshot_id,
+            "retained_paper_ids": sorted(
+                p["id"] for p in result["snapshot"]["papers"]
+            ),
+            "dataset_ids": sorted(
+                d["id"] for d in result["snapshot"]["datasets"]
+            ),
+            "requested_generations": config.max_generations,
+            "minimum_generations": config.minimum_generations,
+            "max_pairs": config.max_pairs_per_tournament,
+            "max_papers": config.max_papers,
+            "synthetic_pilot": config.synthetic_pilot,
+            "live_discovery": config.discover,
+            "evaluation_claim_verified": False,
+        },
         "model_calls": model.usage.calls,
         "reserved_tokens": model.usage.reserved_tokens,
         "actual_input_tokens": model.usage.input_tokens,

@@ -36,6 +36,16 @@ on:
         required: true
         type: boolean
         default: false
+      reuse_llm_cache:
+        description: "Optional exact-response replay to avoid re-paying on retries; requires SQL 006"
+        required: true
+        type: boolean
+        default: false
+      replay_namespace:
+        description: "Cache namespace: separate A/B arms, e.g. baseline_A"
+        required: true
+        type: string
+        default: "controlled_v07"
       save_supabase:
         description: "Write results into isolated lab_frontier_runs table"
         required: true
@@ -84,6 +94,8 @@ jobs:
       SAVE_KNOWLEDGE_GRAPH: ${{ inputs.save_knowledge_graph }}
       MAX_MODEL_CALLS: ${{ inputs.max_generations == '2' && '55' || '30' }}
       MAX_RESERVED_TOKENS: "350000"
+      LLM_REPLAY_CACHE_ENABLED: ${{ inputs.reuse_llm_cache }}
+      LLM_REPLAY_NAMESPACE: ${{ inputs.replay_namespace }}
     steps:
       - name: Checkout vetted main branch
         uses: actions/checkout@v4

@@ -18,6 +18,8 @@ class Usage:
     reserved_tokens: int = 0
     input_tokens: int = 0
     output_tokens: int = 0
+    cache_hits: int = 0
+    provider_calls: int = 0
 
 
 class BudgetExceeded(RuntimeError):
@@ -42,6 +44,10 @@ class BudgetedModel:
         self.usage.calls += 1
         self.usage.reserved_tokens += self.tokens_per_call
         result = self.underlying.complete(role=role, system=system, payload=payload)
+        if getattr(self.underlying, "last_cache_hit", False):
+            self.usage.cache_hits += 1
+        else:
+            self.usage.provider_calls += 1
         usage = getattr(self.underlying, "last_usage", {})
         self.usage.input_tokens += max(0, int(usage.get("input_tokens", 0)))
         self.usage.output_tokens += max(0, int(usage.get("output_tokens", 0)))

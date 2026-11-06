@@ -282,3 +282,25 @@ file itself, custodians and sensitive source metadata are **not** stored here.
 - No database schema changes required beyond existing 003/004.
 
 [Full configuration, caveats and paired-run study design](docs/cusp-v06-upgrade.md).
+
+
+---
+
+## V0.7: optional DeepSeek response replay and no-AI A/B audit
+
+- **Recovery:** [SQL 006](sql/006_llm_replay_cache.sql) adds a server-only
+  per-request response cache (opt-in, off by default). It prevents *some*
+  duplicate provider calls when a failed run is retried with identical
+  prompts, while preserving logical model-call ceilings.
+- **Comparison:** [Compare Two Frontier Experiments](
+  .github/workflows/compare-frontier.yml) reads two run UUIDs and produces
+  a numeric, evidence-aligned audit without extra LLM calls. It explicitly
+  blocks unequal registered paper sets or source snapshots and does not
+  equate Elo with objective scientific quality.
+- **Governance:** No CUSP source files, original prompts, raw metadata or
+  model credentials were committed. Cached JSON outputs remain sensitive
+  and restricted to privileged Supabase server access.
+- **Limitations:** Exact request replay ≠ full LangGraph checkpointing. The
+  cross-run audit is descriptive, not causal or external scientific validation.
+
+[Read V0.7 setup and scientific limitations](docs/v07-recovery-and-ab.md).
