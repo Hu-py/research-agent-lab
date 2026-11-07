@@ -93,13 +93,17 @@ def build_frontier_graph(model: BudgetedModel, config: FrontierConfig, *,
 
     def generate_node(state: FrontierState) -> dict:
         snapshot = Snapshot.model_validate(state["snapshot"])
+        rejected: list[dict] = []
         pool = create_seed_candidates(
-            snapshot, model, state["strategy"], state["memory_hints"]
+            snapshot, model, state["strategy"], state["memory_hints"],
+            rejections=rejected
         )
         return {
             "candidates": pool,
             "events": state["events"] + [{
                 "stage": "generate", "created": [c["id"] for c in pool],
+                "rejected_count": len(rejected),
+                "rejected_candidates": rejected,
                 "strategy": state["strategy"]
             }],
         }
@@ -140,35 +144,53 @@ def build_frontier_graph(model: BudgetedModel, config: FrontierConfig, *,
 
     def evolve_node(state: FrontierState) -> dict:
         snapshot = Snapshot.model_validate(state["snapshot"])
+        rejected: list[dict] = []
         children = evolve_hypotheses(
             [c for c in state["candidates"] if c["status"] == "candidate"],
             snapshot, model,
             strategy=state["strategy"], memory_hints=state["memory_hints"],
-            generation=state["generation"] + 1
+            generation=state["generation"] + 1,
+            rejections=rejected
         )
         # Keep ALL earlier candidates, so a failed revision cannot erase the champion.
+        # If every proposal is malformed, verify the prior champion rather than
+        # entering a fake extra evolution round.
         return {
             "candidates": state["candidates"] + children,
-            "generation": state["generation"] + 1,
+            "generation": state["generation"] + (1 if children else 0),
             "events": state["events"] + [{
                 "stage": "hypothesis_evolution",
                 "children": [{"id": c["id"], "parent_ids": c["parent_ids"]}
                              for c in children],
+                "rejected_count": len(rejected),
+                "rejected_candidates": rejected,
+                "no_valid_children": not bool(children),
             }],
         }
 
     def expand_node(state: FrontierState) -> dict:
         snapshot = Snapshot.model_validate(state["snapshot"])
-        child = expand_hypothesis(
-            state["candidates"], snapshot, model,
-            strategy=state["strategy"], memory_hints=state["memory_hints"],
-            generation=state["generation"] + 1
-        )
+        try:
+            child = expand_hypothesis(
+                state["candidates"], snapshot, model,
+                strategy=state["strategy"], memory_hints=state["memory_hints"],
+                generation=state["generation"] + 1
+            )
+        except ValueError:
+            # A single unusable boundary idea should not destroy a run.
+            return {
+                "events": state["events"] + [{
+                    "stage": "hypothesis_expansion",
+                    "no_valid_children": True,
+                    "rejected_count": 1
+                }]
+            }
         return {
             "candidates": state["candidates"] + [child],
             "generation": state["generation"] + 1,
             "events": state["events"] + [{
                 "stage": "hypothesis_expansion", "created": child["id"],
+                "rejected_count": 0
             }],
         }
 
@@ -274,8 +296,17 @@ def build_frontier_graph(model: BudgetedModel, config: FrontierConfig, *,
                                 lambda state: state["decisions"][-1]["action"],
                                 {"evolve": "evolve", "expand": "expand",
                                  "rollback": "rollback", "verify": "verify"})
-    graph.add_edge("evolve", "tournament")
-    graph.add_edge("expand", "tournament")
+    # Only legitimate, validated children may trigger another tournament.
+    graph.add_conditional_edges(
+        "evolve",
+        lambda state: "verify" if state["events"][-1].get("no_valid_children") else "tournament",
+        {"verify": "verify", "tournament": "tournament"}
+    )
+    graph.add_conditional_edges(
+        "expand",
+        lambda state: "verify" if state["events"][-1].get("no_valid_children") else "tournament",
+        {"verify": "verify", "tournament": "tournament"}
+    )
     graph.add_edge("rollback", "verify")
     graph.add_edge("verify", "finish")
     graph.add_edge("finish", END)

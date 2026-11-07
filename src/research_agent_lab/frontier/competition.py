@@ -256,7 +256,8 @@ def evolve_hypotheses(pool: list[dict], snapshot: Snapshot, model: BudgetedModel
     champions = sorted(pool, key=lambda x: (-x["elo"], x["id"]))[:2]
     children: list[dict] = []
     methods = ("refine", "fuse")[:max_children]
-    for method in methods:
+    next_id = max(int(c["id"][1:]) for c in pool) + 1
+    for child_index, method in enumerate(methods):
         parents = champions[:1] if method == "refine" else champions[:2]
         critique = model.complete(
             role="evolution_critic", system=SYSTEM + (
@@ -296,7 +297,7 @@ def evolve_hypotheses(pool: list[dict], snapshot: Snapshot, model: BudgetedModel
                         "paper_ids, dataset_ids and limitations.",
             },
         )
-        identifier = f"H{len(pool) + len(children) + 1:03d}"
+        identifier = f"H{next_id + child_index:03d}"
         child = make_candidate(raw, snapshot, identifier=identifier, origin=method,
                                parent_ids=[x["id"] for x in parents], generation=generation,
                                model=model)
@@ -322,6 +323,6 @@ def expand_hypothesis(pool: list[dict], snapshot: Snapshot, model: BudgetedModel
         },
     )
     return make_candidate(
-        raw, snapshot, identifier=f"H{len(pool) + 1:03d}",
+        raw, snapshot, identifier=f"H{max(int(c['id'][1:]) for c in pool) + 1:03d}",
         origin="boundary", parent_ids=[], generation=generation, model=model,
     )

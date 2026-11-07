@@ -74,24 +74,27 @@ def test_nested_limitation_requires_one_evidence_checked_repair():
     assert model.usage.calls == 1
 
 
-def test_does_not_accept_fabricated_paper_on_repair():
+def test_repair_preserves_original_registered_citation_when_llm_fabricates_id():
     model = BudgetedModel(Fixer(candidate(paper_ids=["invented-paper"])), max_calls=2)
-    with pytest.raises(ValueError, match="Candidate contract repair failed: UNREGISTERED_PAPER_ID"):
-        make_candidate(
-            candidate(limitations={"risk": "short sample"}),
-            snapshot(), identifier="H001", origin="method", parent_ids=[],
-            generation=0, model=model
-        )
+    fixed = make_candidate(
+        candidate(limitations={"risk": "short sample"}),
+        snapshot(), identifier="H001", origin="method", parent_ids=[],
+        generation=0, model=model
+    )
+    # Reject invalid replacement reference; preserve only existing registered evidence.
+    assert fixed["paper_ids"] == ["paper-1"]
+    assert "invented-paper" not in fixed["paper_ids"]
 
 
-def test_repair_cannot_create_baseline_from_empty_text():
+def test_repair_preserves_valid_original_baseline_if_corrected_drops_it():
     model = BudgetedModel(Fixer(candidate(baselines=[])), max_calls=2)
-    with pytest.raises(ValueError, match="INVALID_LIST_STRUCTURE"):
-        make_candidate(
-            candidate(limitations={"risk": "short sample"}),
-            snapshot(), identifier="H001", origin="method", parent_ids=[],
-            generation=0, model=model
-        )
+    repaired = make_candidate(
+        candidate(limitations={"risk": "short sample"}),
+        snapshot(), identifier="H001", origin="method", parent_ids=[],
+        generation=0, model=model
+    )
+    assert repaired["baselines"] == ["Train-only mean"]
+    assert model.usage.calls == 1
 
 
 def test_model_budget_restricts_repair():
@@ -122,3 +125,36 @@ def test_valid_candidate_retains_existing_no_extra_calls():
     )
     assert c["status"] == "candidate"
     assert model.usage.calls == 0
+
+
+
+def test_truly_unregistered_paper_cannot_pass_after_two_repair_attempts():
+    model = BudgetedModel(Fixer(candidate(paper_ids=["invented-paper"])), max_calls=3)
+    with pytest.raises(ValueError, match="UNREGISTERED_PAPER_ID"):
+        make_candidate(
+            candidate(paper_ids=["invented-paper"], limitations={"risk":"short sample"}),
+            snapshot(), identifier="H001", origin="method", parent_ids=[],
+            generation=0, model=model
+        )
+    assert model.usage.calls == 2
+
+
+def test_second_repair_can_fix_missing_required_scientific_field():
+    class IncompleteFixer(Fixer):
+        def complete(self, *, role, system, payload):
+            if role == "frontier_candidate_repair":
+                self.calls.append((role, payload["invalid_field"]))
+                if len(self.calls) == 1:
+                    return candidate(method="", question="")
+                return candidate(method="Grouped spatial regression", question="")
+            raise AssertionError(role)
+
+    model = BudgetedModel(IncompleteFixer(candidate()), max_calls=3)
+    corrected = make_candidate(
+        candidate(method="", question="Original falsifiable question"),
+        snapshot(), identifier="H004", origin="refine", parent_ids=["H001"],
+        generation=1, model=model
+    )
+    assert corrected["method"] == "Grouped spatial regression"
+    assert corrected["question"] == "Original falsifiable question"
+    assert model.usage.calls == 2
