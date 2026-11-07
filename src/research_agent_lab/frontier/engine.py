@@ -483,17 +483,20 @@ def build_frontier_graph(model: BudgetedModel, config: FrontierConfig, *,
                                 {"evolve": "evolve", "expand": "expand",
                                  "rollback": "rollback", "verify": "verify"})
     # Only legitimate, validated children may trigger another tournament.
+    post_revision_routes = {"verify": "verify", "tournament": "tournament"}
+    if config.feasibility_first:
+        post_revision_routes["feasibility"] = "feasibility"
     graph.add_conditional_edges(
         "evolve",
         lambda state: ("verify" if state["events"][-1].get("no_valid_children")
                        else "feasibility" if config.feasibility_first else "tournament"),
-        {"verify": "verify", "tournament": "tournament", "feasibility": "feasibility"}
+        post_revision_routes
     )
     graph.add_conditional_edges(
         "expand",
         lambda state: ("verify" if state["events"][-1].get("no_valid_children")
                        else "feasibility" if config.feasibility_first else "tournament"),
-        {"verify": "verify", "tournament": "tournament", "feasibility": "feasibility"}
+        post_revision_routes
     )
     graph.add_edge("rollback", "verify")
     graph.add_edge("verify", "finish")

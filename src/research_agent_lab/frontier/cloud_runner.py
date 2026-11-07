@@ -14,6 +14,9 @@ from pathlib import Path
 
 from research_agent_lab.contracts import Snapshot
 from research_agent_lab.portrait import EvidenceBundle
+from research_agent_lab.catalog_bridge import (
+    approved_catalog_from_json, merge_approved_catalog
+)
 from research_agent_lab.workbench_bridge import fetch_workbench_evidence
 from research_agent_lab.portrait_cli import main as portrait_main
 from research_agent_lab.portrait_store import check_profile_store
@@ -124,6 +127,18 @@ def main() -> int:
                 if not raw:
                     raise ValueError("Missing TEAM_EVIDENCE_JSON GitHub Secret")
                 bundle = EvidenceBundle.model_validate_json(raw)
+            # Explicit opt-in: only owner-approved, redacted metadata from
+            # the private GitHub Secret can enter the LLM context. Never
+            # trust the raw CUSP spreadsheet as an approved export.
+            if os.getenv("USE_APPROVED_CATALOG", "false").lower() == "true":
+                text = os.getenv("TEAM_DATA_CATALOG_JSON") or ""
+                if not text:
+                    raise ValueError("APPROVED_CATALOG_SECRET_MISSING")
+                catalog = approved_catalog_from_json(text)
+                bundle, counts = merge_approved_catalog(bundle, catalog)
+                print("Approved metadata added: " +
+                      str(counts["newly_added_metadata"]) +
+                      "; raw files uploaded: false; data access verified: false")
             # Validate BOTH destination tables prior to charging the model.
             check_profile_store()
             check_frontier_supabase()
@@ -185,7 +200,10 @@ def main() -> int:
         if status != 0:
             return status
         result = json.loads(output_path.read_text(encoding="utf-8"))
-        if write_graph:
+        if write_graph and not (result.get("ranked_candidates") or
+                                result.get("archived_candidates")):
+            print("Graph skipped: no hypotheses survived schema validation")
+        elif write_graph:
             # The frontier run has already been inserted into lab_frontier_runs.
             # Persist the version DAG with stable IDs only AFTER the run exists.
             portrait_report = json.loads(

@@ -70,7 +70,11 @@ def metrics(run: dict) -> dict:
     disagreements = sum(1 for match in matches if
                         isinstance(match, dict) and
                         match.get("position_disagreement") is True)
+    feasibility = result.get("feasibility") or {}
     return {
+        "feasibility_precheck_eligible": int(feasibility.get("eligible_count") or 0),
+        "feasibility_precheck_blocked": int(feasibility.get("blocked_count") or 0),
+        "no_executable_candidates": run.get("status") == "no_executable_candidates",
         "generation_count": int(result.get("generation_count") or 0),
         "candidate_versions": len(lineage),
         "tournament_matches": len(matches),

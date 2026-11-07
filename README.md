@@ -338,3 +338,8 @@ Research Atlas `多智能体博弈回放` page.
 The server-only setup and permissions are documented in the Workbench repo:
 [Game replay / Run launch documentation](
 https://github.com/Hu-py/research-opportunity-workbench/blob/main/docs/research-agent-game-replay.md).
+
+
+## Feasibility-first ideation (v1.1)
+
+Real cloud research now uses deterministic **pre-Elo** data and protocol checks, bounded evidence-driven hypothesis revision, and an actionable fallback when no usable empirical data has been verified. Unknown data rights are never upgraded by an Agent's opinion. [Setup and scientific limits](docs/v11-feasibility-first.md).

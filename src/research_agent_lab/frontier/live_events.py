@@ -18,7 +18,8 @@ from research_agent_lab.supabase_auth import headers, supabase_url
 
 # Allowlist stage fields only. No raw source, unpublished text, or research titles.
 _BOOLEAN_FIELDS = {"pilot_executed", "data_feasible_assessment", "no_valid_children"}
-_INTEGER_FIELDS = {"generation", "retrieved", "retained", "disagreements",
+_INTEGER_FIELDS = {"eligible_count", "blocked_count", "revision_attempt",
+                   "generation", "retrieved", "retained", "disagreements",
                    "matches", "archived_generation", "rejected_count"}
 _ID_FIELDS = {"leader", "winner"}
 _ENUM_FIELDS = {"decision", "strategy"}

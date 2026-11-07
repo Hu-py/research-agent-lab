@@ -21,6 +21,42 @@ SYSTEM = (
 
 
 def create_bilingual_report(result: dict, model: BudgetedModel) -> dict:
+    if result.get("winner") is None:
+        # No paid translation request, no fake experiment or champion.
+        plan = result.get("minimum_viable_plan") or {}
+        return {
+            "version": 1,
+            "source": "fixed_bilingual_status_not_scientific_validation",
+            "novelty_verified": False,
+            "experimental_claim_verified": False,
+            "fields": {
+                "title": {
+                    "zh": "本轮未得到已核验可执行的实证选题",
+                    "en": "No independently verified executable empirical topic",
+                },
+                "research_question": {
+                    "zh": "当前研究问题仍需核对数据及实验条件。",
+                    "en": "The research question still requires data and protocol verification.",
+                },
+                "method": {
+                    "zh": "下一步：核验数据权限、变量与最小基线实验。",
+                    "en": "Next: verify data rights, real variables and a minimal baseline test.",
+                },
+                "competition_insight": {
+                    "zh": "不可执行的候选未进入 Elo 排名。",
+                    "en": "Blocked candidates did not enter Elo competition.",
+                },
+                "scientific_assessment": {
+                    "zh": "尚未验证研究新颖性或实证结论。",
+                    "en": "Neither novelty nor empirical claims are verified.",
+                },
+                "evidence_limitations": {
+                    "zh": "需完成数据和实验条件核验后再次迭代。",
+                    "en": "Reiterate after independently checking data and study prerequisites.",
+                },
+            },
+            "plan_mode": plan.get("mode", "rights_and_data_verification"),
+        }
     winner = result["winner"]
     verification = result["verification"]
     matches = result.get("matches", [])

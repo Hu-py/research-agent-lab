@@ -335,7 +335,7 @@ def opportunity_graph(bundle: EvidenceBundle, portrait: dict, run: dict) -> Grap
         candidate_id = str(c["id"])
         node_key = f"opportunity:{run_id}:{candidate_id}"
         current_status = c.get("status", "candidate")
-        if current_status not in ("candidate", "archived"):
+        if current_status not in ("candidate", "archived", "blocked"):
             raise ValueError("Unknown candidate state")
         parents = c.get("parent_ids", [])
         if not isinstance(parents, list) or not set(parents) <= ids:
@@ -362,8 +362,12 @@ def opportunity_graph(bundle: EvidenceBundle, portrait: dict, run: dict) -> Grap
                                  "claim verification remains outstanding.")
             else:
                 missing_refs.add("paper:" + str(pid))
+        # Existing SQL 004 only permits candidate/archived/selected.
+        # Store a blocked proposal as archived in the graph index while
+        # preserving its exact gate verdict and codes inside version payload.
         outcome = ("selected" if candidate_id == selected_id and current_status ==
-                   "candidate" else current_status)
+                   "candidate" else "archived" if current_status == "blocked"
+                   else current_status)
         b.batch.opportunity_versions.append({
             "id": _uuid(bundle.bundle_id, "opportunity_version",
                         f"{run_id}|{candidate_id}"),
@@ -386,6 +390,7 @@ def opportunity_graph(bundle: EvidenceBundle, portrait: dict, run: dict) -> Grap
                 "dataset_ids": c.get("dataset_ids", []),
                 "limitations": c.get("limitations", []),
                 "novelty_verified": False,
+                "pre_tournament_feasibility": c.get("feasibility"),
             },
         })
     b.batch.diagnostics = {
