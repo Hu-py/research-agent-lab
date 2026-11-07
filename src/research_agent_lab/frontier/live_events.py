@@ -17,9 +17,9 @@ from research_agent_lab.supabase_auth import headers, supabase_url
 
 
 # Allowlist stage fields only. No raw source, unpublished text, or research titles.
-_BOOLEAN_FIELDS = {"pilot_executed", "data_feasible_assessment"}
+_BOOLEAN_FIELDS = {"pilot_executed", "data_feasible_assessment", "no_valid_children"}
 _INTEGER_FIELDS = {"generation", "retrieved", "retained", "disagreements",
-                   "matches", "archived_generation"}
+                   "matches", "archived_generation", "rejected_count"}
 _ID_FIELDS = {"leader", "winner"}
 _ENUM_FIELDS = {"decision", "strategy"}
 
@@ -44,6 +44,13 @@ def _safe_details(event: dict) -> dict[str, Any]:
             "verify", "evolve", "expand", "rollback", "balanced", "novelty", "feasibility"
         ):
             safe[key] = value
+    code = event.get("failure_code")
+    if isinstance(code, str) and code in {
+        "CANDIDATE_SCHEMA_INVALID", "MODEL_BUDGET_EXHAUSTED",
+        "MODEL_PROVIDER_ERROR", "EVIDENCE_PIPELINE_ERROR",
+        "SCIENTIFIC_GATE_ERROR", "OTHER_RUNTIME_ERROR"
+    }:
+        safe["failure_code"] = code
     # Length only; don't forward parent IDs or candidate text during live run.
     if isinstance(event.get("created"), list):
         safe["created_count"] = min(30, len(event["created"]))
@@ -114,5 +121,21 @@ class FrontierEventPublisher:
     def finished(self) -> None:
         self.emit({"stage":"run_completed"})
 
-    def failed(self) -> None:
-        self.emit({"stage":"run_failed"})
+    def failed(self, failure_code: str = "OTHER_RUNTIME_ERROR") -> None:
+        self.emit({"stage":"run_failed", "failure_code": failure_code})
+
+
+def safe_failure_code(exc: Exception) -> str:
+    """Stable non-content diagnostic for UI; never export exception text."""
+    message = str(exc)
+    if "Candidate contract repair failed" in message or "Initial hypotheses insufficient" in message:
+        return "CANDIDATE_SCHEMA_INVALID"
+    if "ceiling exceeded" in message or "budget exceeded" in message.lower():
+        return "MODEL_BUDGET_EXHAUSTED"
+    if message.startswith("DeepSeek ") or message.startswith("Model response"):
+        return "MODEL_PROVIDER_ERROR"
+    if "paper" in message.lower() or "OpenAlex" in message:
+        return "EVIDENCE_PIPELINE_ERROR"
+    if "science validation" in message.lower() or "Winner lacks" in message:
+        return "SCIENTIFIC_GATE_ERROR"
+    return "OTHER_RUNTIME_ERROR"

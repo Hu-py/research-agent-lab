@@ -21,7 +21,7 @@ from .memory import MemoryStore
 from .mock import FrontierMockModel
 from .storage import persist_frontier_run, check_frontier_supabase
 from .remote_memory import hydrate_recent_memory
-from .live_events import FrontierEventPublisher, check_frontier_event_store
+from .live_events import FrontierEventPublisher, check_frontier_event_store, safe_failure_code
 from .bilingual_report import create_bilingual_report
 
 
@@ -182,9 +182,9 @@ def main(argv: list[str] | None = None) -> int:
                 else:
                     print(output)
                 return 0
-            except (ValueError, RuntimeError, OSError, KeyError, TypeError):
+            except (ValueError, RuntimeError, OSError, KeyError, TypeError) as exc:
                 if publisher is not None:
-                    publisher.failed()
+                    publisher.failed(safe_failure_code(exc))
                 raise
             finally:
                 if publisher is not None:

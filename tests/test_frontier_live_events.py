@@ -81,3 +81,20 @@ def test_stream_fails_open_without_contaminating_model_run(monkeypatch):
         assert pub.next_step==0
         pub.emit({"stage":"scientific_gate"})
         assert pub.next_step==0
+
+
+
+def test_live_failure_code_is_opaque_and_privacy_safe():
+    from research_agent_lab.frontier.live_events import safe_failure_code
+    secret="PRIVATE_RESEARCH_CONCEPT"
+    code=safe_failure_code(ValueError(
+        "Candidate contract repair failed: INVALID_REQUIRED_FIELD "+secret
+    ))
+    assert code=="CANDIDATE_SCHEMA_INVALID"
+    safe=_safe_details({"stage":"run_failed", "failure_code":code, "reason":secret,
+                        "rejected_count":2,"no_valid_children":True})
+    assert safe["failure_code"]=="CANDIDATE_SCHEMA_INVALID"
+    assert safe["rejected_count"]==2
+    assert safe["no_valid_children"] is True
+    assert secret not in str(safe)
+    assert _safe_details({"failure_code":"arbitrary raw exception"})=={}
