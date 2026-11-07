@@ -15,7 +15,10 @@ OBSERVATION_KEYS = frozenset((
     "eligible_ids_valid", "compared_count", "winner_eligible",
     "execution_status", "experiment_outcome", "protocol_allowlisted",
     "data_access_state", "operation_count", "remaining_operations",
-    "global_backtracks", "reframe_count", "literature_retries",
+    "global_backtracks", "reframe_count", "stage_task_verdict",
+    "stage_task_check_valid", "remaining_task_issue_count",
+    "verified_task_repairs", "task_focus_candidate_count",
+    "literature_retries",
     "formulation_retries", "competition_retries", "verification_retries",
 ))
 
@@ -38,6 +41,13 @@ def observe(state: V2State, *, max_operations: int) -> dict[str, Any]:
     access = state.get("context", {}).get("data_access_verified")
     outcome = state.get("experiment_assessment", {}).get("outcome")
     exec_status = state.get("experiment", {}).get("status")
+    evaluation = state.get("stage_evaluation") or {}
+    current_contract = state.get("active_task_contract") or {}
+    evaluated = bool(
+        evaluation.get("contract_id") and
+        current_contract.get("contract_id") == evaluation.get("contract_id") and
+        current_contract.get("target_stage") == evaluation.get("stage")
+    )
     return {
         "stage": state.get("stage", "init"),
         "stage_signal": state.get("stage_signal", "unknown"),
@@ -67,6 +77,14 @@ def observe(state: V2State, *, max_operations: int) -> dict[str, Any]:
         ),
         "operation_count": max(0, int(state.get("operation_count", 0))),
         "remaining_operations": max(0, max_operations-int(state.get("operation_count", 0))),
+        "stage_task_verdict": evaluation.get("verdict") if evaluated else "unknown",
+        "stage_task_check_valid": bool(evaluated and evaluation.get("checks_passed")),
+        "remaining_task_issue_count": len(evaluation.get("remaining_target_issue_codes", []))
+                                      if evaluated else 0,
+        "verified_task_repairs": len(evaluation.get("verified_resolved_issue_codes", []))
+                                 if evaluated else 0,
+        "task_focus_candidate_count": len(current_contract.get("focus_candidate_ids", []))
+                                      if current_contract else 0,
         "global_backtracks": state.get("global_backtracks", 0),
         "reframe_count": state.get("reframe_count", 0),
         "literature_retries": retries.get("evidence", 0),
@@ -102,6 +120,9 @@ def diagnose(observations: dict[str, Any]) -> dict[str, Any]:
         "next_evidence_checks": sorted(set(checks)),
         "root_cause_independently_confirmed": False,
         "scientific_quality_inferred": False,
+        "task_evaluation_present": observations.get("stage_task_verdict") != "unknown",
+        "stage_task_verdict": observations.get("stage_task_verdict", "unknown"),
+        "remaining_task_issue_count": observations.get("remaining_task_issue_count", 0),
     }
 
 def supported_refs(observations: dict[str, Any], refs: object) -> bool:

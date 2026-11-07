@@ -54,8 +54,28 @@ def evaluate_pending_decision(state: V2State, *,
         )
     used = max(0, int(state.get("operation_count", 0)) -
                int(record.get("operation_count", 0)))
+    evaluation = state.get("stage_evaluation") or {}
+    issued = record.get("issued_task_contract_id")
+    grounded = (
+        issued is not None and
+        issued == evaluation.get("contract_id") and
+        evaluation.get("stage") == target_stage
+    )
     row = {
         "decision_id": record.get("decision_id"),
+        "task_contract_id": issued,
+        "task_evaluation_grounded": bool(grounded),
+        "task_verdict": evaluation.get("verdict") if grounded else "not_available",
+        "verified_resolved_issue_codes": (
+            evaluation.get("verified_resolved_issue_codes", []) if grounded else []
+        ),
+        "remaining_target_issue_codes": (
+            evaluation.get("remaining_target_issue_codes", []) if grounded else []
+        ),
+        "new_issue_codes": evaluation.get("new_issue_codes", []) if grounded else [],
+        "task_process_changes": (
+            evaluation.get("process_changes", {}) if grounded else {}
+        ),
         "selected_action": target_stage,
         "expected_metric": metric,
         "metric_before": before,
@@ -72,6 +92,14 @@ def evaluate_pending_decision(state: V2State, *,
 def descriptive_policy_audit(feedback: list[dict]) -> dict[str, Any]:
     counts = Counter(x.get("observed_process_verdict", "unknown") for x in feedback)
     return {
+        "stage_contracts_evaluated": sum(bool(x.get("task_evaluation_grounded"))
+                                         for x in feedback),
+        "observed_task_repairs": sum(
+            len(x.get("verified_resolved_issue_codes", [])) for x in feedback
+        ),
+        "unresolved_task_issues": sum(
+            len(x.get("remaining_target_issue_codes", [])) for x in feedback
+        ),
         "observed_decision_outcomes": len(feedback),
         "process_progress": counts["observed_process_progress"],
         "unchanged": counts["unchanged"],

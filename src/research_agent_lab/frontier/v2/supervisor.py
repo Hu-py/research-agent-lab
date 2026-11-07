@@ -16,6 +16,7 @@ from .policy import propose_options, verify_option
 from .feedback import (
     metric_value, evaluate_pending_decision, descriptive_policy_audit
 )
+from .contracts import issue_contract
 
 STAGES = frozenset(("evidence", "formulation", "competition", "verification"))
 HARD_DATA_BLOCKERS = frozenset((
@@ -158,8 +159,21 @@ def choose_next(state: V2State, limits: V2Limits) -> dict:
     decision_number = len(state.get("decisions", [])) + 1
     previous = state.get("decisions", [])
     decision_id = "D" + str(decision_number).zfill(4)
+    # A new scoped contract is the only valid entry ticket to a subgraph.
+    # It is issued AFTER independent policy verification, not by the worker.
+    next_contract = (issue_contract(
+        state, target=next_stage, decision_id=decision_id,
+        reason=reason, limits=limits
+    ) if next_stage in STAGES else {})
+    contracts = ([*state.get("task_contracts", []), next_contract]
+                 if next_contract else list(state.get("task_contracts", [])))
+    prior_eval = state.get("stage_evaluation", {})
     return {
         "next_stage": next_stage,
+        "active_task_contract": next_contract,
+        "task_contracts": contracts,
+        "stage_evaluation": {} if next_contract else prior_eval,
+        "repair_plan": {} if next_contract else state.get("repair_plan", {}),
         "global_backtracks": backtracks + int(increment),
         "signature_hits": signature_hits,
         "decisions": [*previous, {
@@ -173,6 +187,10 @@ def choose_next(state: V2State, limits: V2Limits) -> dict:
             "expected_metric": selected_metric,
             "metric_before": metric_value(observations, selected_metric),
             "verifier_veto_codes": verifier_veto,
+            "task_evaluation": prior_eval if prior_eval.get("stage") == prior else None,
+            "issued_task_contract_id": next_contract.get("contract_id"),
+            "issued_task_focus_candidate_ids": next_contract.get("focus_candidate_ids", []),
+            "outstanding_task_issues": prior_eval.get("remaining_target_issue_codes", []),
             "decision_method": "frozen_heuristics_plus_independent_guard",
             "confidence_calibrated": False,
             "abstained": next_stage == "safe_stop",

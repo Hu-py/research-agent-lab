@@ -13,6 +13,7 @@ from langgraph.graph import START, END, StateGraph
 from .driver import ResearchDriver, ScriptedResearchDriver
 from .state import V2Limits, V2State, codes, event, initial_state
 from .supervisor import choose_next
+from .evaluator import evaluate_task
 
 _REAL_EXECUTION = "executed"
 _SYNTHETIC_EXECUTION = "simulated_executed"
@@ -107,6 +108,39 @@ def _budget_blocked(state: V2State) -> bool:
     })
 
 
+def _evaluated_stage_result(state: V2State, limits: V2Limits,
+                            stage: str, diagnostics: dict) -> dict:
+    """Controller-side evaluation after workers finish this local attempt.
+
+    Only the independent evaluator can set the stage verdict, repair targets
+    or readiness signal; worker-provided flags are treated as observations.
+    """
+    proposal = {**state, **diagnostics}
+    assessment = evaluate_task(
+        proposal, stage=stage,
+        nominal_signal=diagnostics.get("stage_signal", "blocked"),
+        issues=diagnostics.get("issue_codes", []),
+        limits=limits,
+    )
+    audit = {
+        "index": len(diagnostics["events"]),
+        "phase": stage,
+        "action": "independent_task_evaluation",
+        "issue_codes": assessment["issue_codes"],
+        "attempt": assessment["attempt"],
+        "changed": bool(assessment["verified_resolved_issue_codes"]),
+    }
+    return {
+        **diagnostics,
+        "stage_signal": assessment["stage_signal"],
+        "issue_codes": assessment["issue_codes"],
+        "stage_evaluation": assessment,
+        "task_evaluations": [*state.get("task_evaluations", []), assessment],
+        "repair_plan": assessment["repair_plan"],
+        "events": [*diagnostics["events"], audit],
+    }
+
+
 def build_evidence_loop(driver: ResearchDriver, limits: V2Limits):
     sub = StateGraph(V2State)
     sub.add_node("search", _operation(driver, limits, "search", "evidence", "literature"))
@@ -124,13 +158,13 @@ def build_evidence_loop(driver: ResearchDriver, limits: V2Limits):
                  and state["operation_count"] + 2 < limits.max_operations)
         reason = [] if ok else (state.get("issue_codes") if _budget_blocked(state)
                                  else ["ALL_PAPERS_REJECTED" if papers else "NO_LITERATURE"])
-        return {
+        return _evaluated_stage_result(state, limits, "evidence", {
             "stage": "evidence",
             "stage_signal": "ready" if ok else "retry" if retry else "blocked",
             "issue_codes": codes(reason),
             "events": event(state, phase="evidence", action="diagnose",
                             issue_codes=reason, retained=len(retained) if isinstance(retained,list) else 0),
-        }
+        })
     def revise(state: V2State) -> dict:
         result = _operation(driver, limits, "revise_query", "evidence",
                             "query", merge=True)(state)
@@ -176,14 +210,14 @@ def build_formulation_loop(driver: ResearchDriver, limits: V2Limits):
                  and "NO_VERIFIED_DATA" not in reasons
                  and state["local_retries"]["formulation"] < limits.hypothesis_revisions
                  and state["operation_count"] + 2 < limits.max_operations)
-        return {
+        return _evaluated_stage_result(state, limits, "formulation", {
             "stage": "formulation",
             "stage_signal": "ready" if valid and not _budget_blocked(state)
                            else "retry" if retry else "blocked",
             "issue_codes": codes(reasons),
             "events": event(state, phase="formulation", action="diagnose",
                             issue_codes=reasons, eligible=len(eligible) if valid else 0),
-        }
+        })
     def revise(state: V2State) -> dict:
         result = _operation(driver, limits, "revise_hypothesis",
                             "formulation", "hypotheses", append_candidates=True)(state)
@@ -222,13 +256,13 @@ def build_competition_loop(driver: ResearchDriver, limits: V2Limits):
                  and state["local_retries"]["competition"] < limits.competition_evolutions
                  and state["operation_count"] + 2 < limits.max_operations)
         issues = codes(judgement.get("issue_codes", []))
-        return {
+        return _evaluated_stage_result(state, limits, "competition", {
             "stage": "competition",
             "stage_signal": "evolve" if retry else "ready" if not _budget_blocked(state) else "blocked",
             "issue_codes": issues or state.get("issue_codes", []) if _budget_blocked(state) else issues,
             "events": event(state, phase="competition", action="diagnose",
                             issue_codes=issues),
-        }
+        })
     def evolve(state: V2State) -> dict:
         result = _operation(driver, limits, "evolve", "competition",
                             "hypotheses", append_candidates=True)(state)
@@ -312,12 +346,12 @@ def build_verification_loop(driver: ResearchDriver, limits: V2Limits):
                  state["operation_count"] + 3 < limits.max_operations)
         signal = ("ready" if not issues else "retry" if retry
                   else "refuted" if "HYPOTHESIS_REFUTED" in issues else "blocked")
-        return {
+        return _evaluated_stage_result(state, limits, "verification", {
             "stage": "verification", "stage_signal": signal,
             "issue_codes": codes(issues),
             "events": event(state, phase="verification", action="diagnose",
                             issue_codes=issues),
-        }
+        })
     def retry(state: V2State) -> dict:
         return _retry_update(state, "verification", "redesign_after_failed_execution")
     sub.add_node("diagnose", diagnose)
@@ -375,6 +409,11 @@ def _report(state: V2State, *, completed: bool) -> dict:
         "supervisor_policy_audit": dict(state.get("policy_audit", {})),
         "supervisor_decision_count": len(state.get("decisions", [])),
         "route_success_is_not_scientific_truth": True,
+        "completed_task_evaluations": len(state.get("task_evaluations", [])),
+        "last_task_evaluation": state.get("stage_evaluation", {}),
+        "unresolved_contract_issues": state.get("stage_evaluation", {}).get(
+            "remaining_target_issue_codes", []
+        ),
     }
 
 

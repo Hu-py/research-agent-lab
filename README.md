@@ -353,3 +353,8 @@ An **opt-in, zero-cost nested LangGraph** orchestration now models evidence, for
 ## V2.1: auditable Meta Supervisor (offline only)
 
 The nested control graph now records **grounded observations, diagnosed uncertainty, proposed alternative routes, independent constraint verification, and noncausal outcome feedback**. It abstains on unsafe progression and never treats simulated progress as scientific truth. [Architecture, test cases and limitations](docs/v21-meta-supervisor-decision-audit.md). Paid production workflows remain unchanged.
+
+
+## V2.2: Task Contract + independent subgraph evaluation (offline)
+
+Each V2 research phase now receives a controller-issued, scoped [Task Contract](docs/v22-task-contract-evaluation.md). Independent check results record resolved/outstanding defects, yield targeted local repair, and are verified before the Meta Supervisor allows a forward route. The feedback ledger records process improvements without claiming research quality is validated. Paid V1 is unchanged.

@@ -58,9 +58,12 @@ class ScriptedResearchDriver:
         backtracks = state.get("global_backtracks", 0)
         authorized = bool(state.get("context", {}).get("synthetic_permission", True))
         if operation == "search":
+            contract = state.get("active_task_contract") or {}
             return {
                 "papers": [{"id": "FAKE_P1"}, {"id": "FAKE_P2"}],
                 "source": "synthetic_only",
+                "query_intent": contract.get("retrieval_intent", "unscoped"),
+                "focused_candidate_ids": contract.get("focus_candidate_ids", []),
             }
         if operation == "review_papers":
             should_reject = self.scenario == "all_papers_rejected" or (
@@ -74,7 +77,11 @@ class ScriptedResearchDriver:
                 "source": "synthetic_only",
             }
         if operation == "revise_query":
-            return {"query_seed": "fictional revised query "+str(retries.get("evidence", 0)+1)}
+            repair = state.get("repair_plan") or {}
+            return {
+                "query_seed": "fictional revised query "+str(retries.get("evidence", 0)+1),
+                "repair_action_codes": repair.get("repair_action_codes", []),
+            }
         if operation == "reframe_problem":
             return {"query_seed": "fictional broader scientific mechanism"}
         if operation == "generate":
@@ -85,14 +92,23 @@ class ScriptedResearchDriver:
                 feasible = authorized
             # After a refuting experimental result, research question is re-scoped.
             prefix = "H1" if backtracks == 0 else "H"+str(1+backtracks*2)
+            contract = state.get("active_task_contract") or {}
+            focused = contract.get("focus_candidate_ids", [])
+            parents = (focused[:1] if
+                       contract.get("revision_intent") == "experiment_refutation"
+                       else [])
             return {
                 "candidates": [
-                    self._candidate(prefix, feasible=feasible),
-                    self._candidate("H"+str(int(prefix[1:])+1), feasible=feasible),
+                    self._candidate(prefix, feasible=feasible, parent_ids=parents),
+                    self._candidate("H"+str(int(prefix[1:])+1),
+                                    feasible=feasible, parent_ids=parents),
                 ]
             }
         if operation == "check_feasibility":
-            focused = set(state.get("active_candidate_ids") or [])
+            focused = (
+                set() if state.get("stage") == "competition"
+                else set(state.get("active_candidate_ids") or [])
+            )
             eligible = [c["id"] for c in state.get("hypotheses", [])
                         if (not focused or c["id"] in focused) and authorized and
                         c.get("execution_plan", {}).get("outcome_field") == "fictional_target"]

@@ -88,6 +88,32 @@ def verify_option(state: V2State, observations: dict[str, Any], option: dict,
             "DATA_ACCESS_NOT_VERIFIED" in issues or
             "REAL_DATA_NOT_VERIFIED" in issues):
         violations.append("UNVERIFIED_DATA_BLOCKER")
+    # If this is a completed V2 subgraph, independently evaluated task
+    # readiness is required in addition to the old state/identity guards.
+    # Direct isolated policy-unit tests without an active task preserve
+    # their earlier contract (the full graph always has a contract).
+    current = state.get("active_task_contract") or {}
+    eval_record = state.get("stage_evaluation") or {}
+    if (current.get("target_stage") == stage and
+            stage in ("evidence", "formulation", "competition", "verification")):
+        valid_evaluation = (
+            eval_record.get("contract_id") == current.get("contract_id")
+            and eval_record.get("stage") == stage
+            and isinstance(eval_record.get("checks"), dict)
+        )
+        if not valid_evaluation and action not in ("safe_stop", "reframe"):
+            violations.append("INDEPENDENT_TASK_EVALUATION_MISSING")
+        elif valid_evaluation and action in ("formulation", "competition",
+                                               "verification", "finalize"):
+            # Forward progression is denied if the independent evaluator
+            # has not passed the stage, even if a worker says "ready".
+            forward = (stage == "evidence" and action == "formulation") or (
+                stage == "formulation" and action in ("competition", "verification")
+            ) or (stage == "competition" and action == "verification") or (
+                stage == "verification" and action == "finalize"
+            )
+            if forward and eval_record.get("verdict") != "stage_passed":
+                violations.append("STAGE_TASK_NOT_ACCEPTED")
     if action == "evidence":
         if stage not in ("init", "reframe", "formulation", "verification"):
             violations.append("EVIDENCE_ROUTE_FROM_UNSUPPORTED_STAGE")

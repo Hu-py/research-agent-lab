@@ -18,7 +18,15 @@ def run_benchmark() -> dict:
     for scenario, expected in EXPECTED.items():
         state=run_v2_dry_run(scenario,limits=V2Limits())
         decisions=state["decisions"]
-        audited=bool(decisions) and all(
+        contracts = state.get("task_contracts", [])
+        evaluations = state.get("task_evaluations", [])
+        all_ids = {c["contract_id"] for c in contracts}
+        task_audit = (bool(evaluations) and all(
+            x.get("contract_id") in all_ids and
+            x.get("scientific_quality_verified") is False
+            for x in evaluations
+        ))
+        audited=bool(decisions) and task_audit and all(
             "observed_facts" in d and "alternatives" in d
             and "problem_diagnosis" in d and
             d.get("scientific_quality_verified") is False
@@ -33,6 +41,8 @@ def run_benchmark() -> dict:
             "expected":expected,"passed":passed_,
             "decisions":len(decisions),
             "feedback_rows":len(state.get("decision_feedback",[])),
+            "task_contracts":len(contracts),
+            "independent_task_evaluations":len(evaluations),
             "abstentions":sum(bool(d.get("abstained")) for d in decisions),
         })
     return {

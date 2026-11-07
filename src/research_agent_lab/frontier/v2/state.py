@@ -73,6 +73,12 @@ class V2State(TypedDict, total=False):
     decisions: list[dict[str, Any]]
     decision_feedback: list[dict[str, Any]]
     policy_audit: dict[str, Any]
+    # Stage-task contracts and independent evaluations (controller-owned).
+    active_task_contract: dict[str, Any]
+    task_contracts: list[dict[str, Any]]
+    stage_evaluation: dict[str, Any]
+    task_evaluations: list[dict[str, Any]]
+    repair_plan: dict[str, Any]
     # Final deliverable
     status: str
     report: dict[str, Any]
@@ -119,7 +125,10 @@ def initial_state(objective: str, *, context: dict[str, Any] | None = None) -> V
         "global_backtracks": 0, "reframe_count": 0,
         "operation_count": 0, "signature_hits": {},
         "events": [], "decisions": [], "decision_feedback": [],
-        "policy_audit": {}, "status": "running", "report": {},
+        "policy_audit": {}, "active_task_contract": {},
+        "task_contracts": [], "stage_evaluation": {},
+        "task_evaluations": [], "repair_plan": {},
+        "status": "running", "report": {},
     }
 
 
