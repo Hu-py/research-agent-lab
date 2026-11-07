@@ -23,6 +23,16 @@ jobs:
         run: python -m pip install -e '.[dev]'
       - name: Test offline LangGraph flow
         run: python -m pytest -q
+      - name: Benchmark V2 Meta Supervisor audit (synthetic, NO AI)
+        run: |
+          mkdir -p outputs
+          python -m research_agent_lab.frontier.v2.benchmark | tee outputs/ci-v2-supervisor-benchmark.json
+      - name: Upload synthetic V2 decision audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: v2-supervisor-decision-audit
+          path: outputs/ci-v2-supervisor-benchmark.json
+          retention-days: 7
       - name: Run frontier multi-agent mock & feedback tests
         run: |
           python -m research_agent_lab.frontier.cli run             --snapshot examples/synthetic_snapshot.json --mock             --max-generations 1 --memory outputs/ci-frontier.sqlite             --out outputs/ci-frontier-demo.json
