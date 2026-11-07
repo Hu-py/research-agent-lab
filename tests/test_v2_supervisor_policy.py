@@ -55,7 +55,16 @@ def test_unfounded_elo_gate_never_approves_hallucinated_ids(broken):
     s["feasibility"]=broken
     d=decide(s)
     assert d["next_stage"]=="safe_stop"
-    assert "COMPETITION_REQUIRES_TWO_VERIFIED_CANDIDATES" in d["decisions"][-1]["verifier_veto_codes"]
+    record=d["decisions"][-1]
+    if broken["eligible_ids"]:
+        # The old router tried a competition despite false positive IDs;
+        # independent verification vetoed the unsafe progression.
+        assert "COMPETITION_REQUIRES_TWO_VERIFIED_CANDIDATES" in record["verifier_veto_codes"]
+    else:
+        # Zero eligible candidates is correctly abstained by the base policy;
+        # no verifier intervention is needed or claimed.
+        assert record["abstained"] is True
+        assert record["verifier_veto_codes"]==[]
 
 def test_unverified_data_permission_is_non_bypassable_even_if_eligible():
     s=base("formulation")
