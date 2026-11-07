@@ -57,9 +57,18 @@ def issue_contract(state: V2State, *, target: str, decision_id: str,
     if target not in PHASES:
         raise ValueError("Only research subgraphs receive task contracts")
     causes = [x for x in state.get("issue_codes", []) if x in ISSUE_CODES]
+    previous = state.get("stage_evaluation") or {}
+    # Keep earlier unresolved scientific defects across ALL phase transitions.
+    # A new version or competition score cannot erase external refutation.
+    causes.extend(
+        x for x in previous.get("remaining_target_issue_codes", [])
+        if x in ISSUE_CODES
+    )
     if not causes and state.get("stage") == "reframe":
-        previous = state.get("stage_evaluation") or {}
-        causes = [x for x in previous.get("issue_codes", []) if x in ISSUE_CODES]
+        causes.extend(
+            x for x in previous.get("issue_codes", [])
+            if x in ISSUE_CODES
+        )
     issues = list(dict.fromkeys(causes))
     candidates = _ids(state.get("active_candidate_ids", []))
     winner = state.get("competition", {}).get("winner_id")

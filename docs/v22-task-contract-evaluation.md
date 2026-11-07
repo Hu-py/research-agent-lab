@@ -47,7 +47,14 @@ All checks distinguish `stage_passed`, `revision_required` and
 Evaluation records also retain:
 - Previous issues from the task contract **and every earlier local attempt**.
 - Issues *actually resolved through independent checks*; unresolved original
-  blockers and newly discovered blockers remain explicit.
+  blockers and newly discovered blockers remain explicit. Unresolved defects
+  are passed into **every later cross-stage contract**, even after successful
+  rewriting, Elo competition, or a synthetic experiment.
+- `defect_progress` reports count of previously known defects, independently
+  resolved defects, outstanding defects and a **process-defect resolution
+  ratio**. This ratio is not a scientific-quality score. A successful synthetic
+  rerun can resolve an executor error, but cannot erase an externally
+  refuted scientific hypothesis.
 - Process differences (new registered retained papers, newly prechecked
   candidates, child versions with lineage), not claimed scientific benefits.
 - A constrained Repair Plan with exact issue codes, allowed repair-action

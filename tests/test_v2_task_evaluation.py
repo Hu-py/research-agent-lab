@@ -197,3 +197,32 @@ def test_bounded_global_and_local_loops_still_terminate():
         assert run["operation_count"] <= 48
         assert run["global_backtracks"] <= 3
         assert len(run["task_evaluations"]) <= 30
+
+
+def test_scientific_refutation_survives_competition_and_synthetic_retest():
+    run = run_v2_dry_run("experimental_refutation")
+    contracts = run["task_contracts"]
+    second_formulation = next(i for i, c in enumerate(contracts)
+                              if c["revision_intent"] == "experiment_refutation")
+    following = contracts[second_formulation + 1:]
+    assert following
+    assert all("HYPOTHESIS_REFUTED" in c["target_issue_codes"] for c in following)
+    latest = run["stage_evaluation"]
+    assert "HYPOTHESIS_REFUTED" in latest["remaining_target_issue_codes"]
+    assert "HYPOTHESIS_REFUTED" not in latest["verified_resolved_issue_codes"]
+    assert run["report"]["scientific_claim_verified"] is False
+
+
+def test_defect_resolution_ratio_refers_only_to_verified_process_defects():
+    run = run_v2_dry_run("recover_retrieval")
+    literature = [x for x in run["task_evaluations"] if x["stage"] == "evidence"]
+    assert literature[0]["defect_progress"]["independently_resolved"] == 0
+    assert literature[1]["defect_progress"]["verified_resolution_ratio"] == 1.0
+    assert literature[1]["defect_progress"]["scientific_quality_gain_estimated"] is False
+
+
+def test_technical_failed_executor_recovery_is_not_scientific_validation():
+    run = run_v2_dry_run("experiment_transient_failure")
+    evaluations = [e for e in run["task_evaluations"] if e["stage"] == "verification"]
+    assert "EXPERIMENT_FAILED" in evaluations[-1]["verified_resolved_issue_codes"]
+    assert evaluations[-1]["defect_progress"]["scientific_quality_gain_estimated"] is False

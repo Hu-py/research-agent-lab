@@ -172,18 +172,28 @@ def evaluate_task(state: V2State, *, stage: str,
             "NO_FEASIBLE_CANDIDATES", "OUTCOME_FIELD_NOT_REGISTERED",
             "FIELD_MAPPING_NOT_REGISTERED", "PROTOCOL_INCOMPLETE",
         })
-    elif stage == "verification" and passed and (
-        state.get("experiment", {}).get("status") == "executed"
-        and state.get("experiment", {}).get("independent_audit") is True
-        and state.get("context", {}).get("data_access_verified") is True
-    ):
-        observed_resolved = sorted(outstanding_origins & {
-            "HYPOTHESIS_REFUTED", "UNINFORMATIVE_RESULT",
-        })
+    elif stage == "verification" and passed:
+        # A successful controlled rerun can cure a technical execution
+        # failure, but simulated results do not resolve a scientific
+        # refutation or validate a real-world hypothesis.
+        process_repairs = outstanding_origins & {"EXPERIMENT_FAILED"}
+        if (state.get("experiment", {}).get("status") == "executed"
+                and state.get("experiment", {}).get("independent_audit") is True
+                and state.get("context", {}).get("data_access_verified") is True):
+            process_repairs |= outstanding_origins & {
+                "HYPOTHESIS_REFUTED", "UNINFORMATIVE_RESULT",
+            }
+        observed_resolved = sorted(process_repairs)
     # In particular, a simulated pilot never resolves an externally refuted
     # scientific hypothesis or an unverified evidence coverage claim.
     outstanding = sorted(outstanding_origins - set(observed_resolved))
     observed_new = sorted(set(issues_now) - outstanding_origins)
+    # Denominator is explicitly "known defects at task entry or local
+    # discovery", not a claim that research quality improved by this ratio.
+    known_count = len(outstanding_origins)
+    resolution_ratio = (
+        round(len(observed_resolved) / known_count, 4) if known_count else None
+    )
     retained = _ids(state.get("literature", {}).get("retained_ids"))
     eligible = _ids(state.get("feasibility", {}).get("eligible_ids"))
     baseline_retained = baseline.get("retained_paper_ids", [])
@@ -222,6 +232,14 @@ def evaluate_task(state: V2State, *, stage: str,
         "verified_resolved_issue_codes": observed_resolved,
         "remaining_target_issue_codes": outstanding,
         "new_issue_codes": observed_new,
+        "defect_progress": {
+            "known_before_or_during_task": known_count,
+            "independently_resolved": len(observed_resolved),
+            "still_outstanding": len(outstanding),
+            "newly_observed_this_attempt": len(observed_new),
+            "verified_resolution_ratio": resolution_ratio,
+            "scientific_quality_gain_estimated": False,
+        },
         "process_changes": changes,
         "repair_plan": {
             "target_issue_codes": sorted(set(outstanding) | set(issues_now)),
