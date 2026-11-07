@@ -7,6 +7,9 @@ optional LLM *advice* may be added without changing its hard route guard.
 """
 from __future__ import annotations
 
+import hashlib
+import json
+
 from .state import V2Limits, V2State, codes, event
 
 STAGES = frozenset(("evidence", "formulation", "competition", "verification"))
@@ -25,7 +28,9 @@ def choose_next(state: V2State, limits: V2Limits) -> dict:
     next_stage = "safe_stop"
     reason = "UNKNOWN_STAGE_STATE"
     increment = False
-    if steps >= limits.max_operations or "OPERATION_BUDGET_EXHAUSTED" in issues:
+    if state.get("run_mode") != "dry_run_only":
+        reason = "V2_PRODUCTION_EXECUTION_NOT_ACTIVATED"
+    elif steps >= limits.max_operations or "OPERATION_BUDGET_EXHAUSTED" in issues:
         reason = "OPERATION_BUDGET_EXHAUSTED"
     elif prior == "init":
         next_stage, reason = "evidence", "INITIAL_EVIDENCE"
@@ -81,7 +86,24 @@ def choose_next(state: V2State, limits: V2Limits) -> dict:
     if increment and backtracks >= limits.global_backtracks:
         next_stage, reason, increment = "safe_stop", "GLOBAL_BACKTRACK_LIMIT", False
 
-    signature = f"{prior}:{signal}:{','.join(issues)}:{next_stage}"
+    # Detect identical research-state failures, not just repeated action labels.
+    # A short fingerprint is safe to persist; private texts never go into
+    # event logs or into the key itself.
+    material = {
+        "papers": [p.get("id") for p in state.get("literature", {}).get("papers", [])
+                   if isinstance(p, dict)],
+        "retained": state.get("literature", {}).get("retained_ids", []),
+        "hypotheses": [c.get("id") for c in state.get("hypotheses", [])
+                       if isinstance(c, dict)],
+        "active": state.get("active_candidate_ids", []),
+        "feasible": state.get("feasibility", {}).get("eligible_ids", []),
+        "protocol_id": state.get("protocol", {}).get("protocol_id"),
+        "experiment_outcome": state.get("experiment_assessment", {}).get("outcome"),
+    }
+    digest = hashlib.sha256(json.dumps(
+        material, sort_keys=True, ensure_ascii=True, default=str
+    ).encode("utf-8")).hexdigest()[:16]
+    signature = f"{prior}:{signal}:{','.join(issues)}:{next_stage}:{digest}"
     hits = state.get("signature_hits", {}).get(signature, 0) + 1
     if hits > limits.max_repeat_signatures:
         next_stage, reason = "safe_stop", "STAGNATION_DETECTED"

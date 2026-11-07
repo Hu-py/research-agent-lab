@@ -141,3 +141,20 @@ def test_bad_configuration_cannot_disable_guards():
         ScriptedResearchDriver("unknown")
     with pytest.raises(ValueError):
         initial_state("")
+
+
+def test_unapproved_live_mode_cannot_be_activated_by_injected_state():
+    state = initial_state("An unauthorized production attempt",context={"synthetic_permission":True})
+    state["run_mode"] = "approved_execution"
+    graph = build_v2_graph(ScriptedResearchDriver())
+    report = graph.invoke(state, config={"recursion_limit":100})
+    assert report["status"] == "safe_stopped"
+    assert report["operation_count"] == 0
+    assert report["decisions"][0]["reason_code"] == "V2_PRODUCTION_EXECUTION_NOT_ACTIVATED"
+
+
+def test_safe_stop_reports_no_fake_winner_even_if_old_competition_exists():
+    report = execute("executor_unavailable")
+    assert report["status"] == "safe_stopped"
+    assert report["competition"].get("winner_id")
+    assert report["report"]["winner_id"] is None

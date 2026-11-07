@@ -366,7 +366,8 @@ def _report(state: V2State, *, completed: bool) -> dict:
              "Repeat validation only after inputs are independently verified"]
         ),
         "candidate_ids": [x.get("id") for x in state.get("hypotheses", [])],
-        "winner_id": state.get("competition", {}).get("winner_id"),
+        "winner_id": (state.get("competition", {}).get("winner_id")
+                      if completed and level in ("A", "B") else None),
         "experiment_outcome": outcome,
         "operation_count": state.get("operation_count", 0),
         "global_backtracks": state.get("global_backtracks", 0),
