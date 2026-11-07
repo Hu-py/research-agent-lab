@@ -1,0 +1,49 @@
+name: V2 Architecture Control Check (NO AI, manual)
+run-name: "V2 nested-loop dry-run · ${{ inputs.scenario }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: "Synthetic architecture-only routing scenario; no DeepSeek or private data"
+        required: true
+        type: choice
+        default: all_papers_rejected
+        options:
+          - happy_path
+          - all_papers_rejected
+          - recover_retrieval
+          - no_data_permission
+          - recover_feasibility
+          - persistent_infeasibility
+          - critique_then_evolve
+          - experimental_refutation
+          - experiment_transient_failure
+          - executor_unavailable
+          - repeated_noop
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v2-architecture-check-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    name: Free control-flow tests (no provider keys)
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install no-observability development dependencies
+        run: python -m pip install -e ".[dev]"
+      - name: Verify independent Meta Supervisor and nested-loop contracts
+        run: python -m pytest -q tests/test_v2_architecture.py
+      - name: Execute selected fictional control-flow rehearsal
+        env:
+          SCENARIO: ${{ inputs.scenario }}
+        run: python -m research_agent_lab.frontier.v2.cli --scenario "$SCENARIO" --events
