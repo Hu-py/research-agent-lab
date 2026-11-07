@@ -33,6 +33,14 @@ jobs:
           name: v2-supervisor-decision-audit
           path: outputs/ci-v2-supervisor-benchmark.json
           retention-days: 7
+      - name: Run 33-case V2 resource-envelope stress suite (no AI)
+        run: python -m research_agent_lab.frontier.v2.stress --output outputs/ci-v2-stress.json
+      - name: Upload V2 stress results
+        uses: actions/upload-artifact@v4
+        with:
+          name: v2-architecture-stress-report
+          path: outputs/ci-v2-stress.json
+          retention-days: 7
       - name: Run frontier multi-agent mock & feedback tests
         run: |
           python -m research_agent_lab.frontier.cli run             --snapshot examples/synthetic_snapshot.json --mock             --max-generations 1 --memory outputs/ci-frontier.sqlite             --out outputs/ci-frontier-demo.json

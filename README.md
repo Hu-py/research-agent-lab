@@ -358,3 +358,8 @@ The nested control graph now records **grounded observations, diagnosed uncertai
 ## V2.2: Task Contract + independent subgraph evaluation (offline)
 
 Each V2 research phase now receives a controller-issued, scoped [Task Contract](docs/v22-task-contract-evaluation.md). Independent check results record resolved/outstanding defects, yield targeted local repair, and are verified before the Meta Supervisor allows a forward route. The feedback ledger records process improvements without claiming research quality is validated. Paid V1 is unchanged.
+
+
+## Automated V2 development tests and opt-in Codex repair
+
+Every push now runs a 33-case no-AI architecture stress suite. Optional Codex repair can diagnose a reproducible CI failure and propose a test-backed PR, never auto-merge. [Setup and permissions](docs/codex-development-loop.md).

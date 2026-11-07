@@ -1,0 +1,136 @@
+name: Codex V2 CI Repair (opt-in; PR only)
+
+# Automatic invocation requires CODEX_AUTOFIX_ENABLED=true (repository variable)
+# and OPENAI_API_KEY (Actions secret). Manual Run workflow always explicit.
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["Python smoke tests"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codex-v2-repair-${{ github.event.workflow_run.id || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  propose_patch:
+    if: >-
+      (github.event_name == 'workflow_dispatch') ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'failure' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.head_repository.full_name == github.repository &&
+       vars.CODEX_AUTOFIX_ENABLED == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    outputs:
+      has_patch: ${{ steps.capture.outputs.has_patch }}
+    steps:
+      - name: Checkout trusted commit without push token
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install test dependencies before introducing API credentials
+        run: python -m pip install -e '.[dev]'
+
+      - name: Codex reproduce, diagnose and propose minimal patch
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt-file: .github/codex/prompts/repair.md
+          sandbox: workspace-write
+          safety-strategy: drop-sudo
+          output-file: codex-diagnosis.md
+
+      - name: Capture restricted source and test diff
+        id: capture
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -N -- src/research_agent_lab/frontier/v2 tests
+          git diff --binary HEAD -- src/research_agent_lab/frontier/v2 tests > codex.patch
+          if test -s codex.patch; then
+            echo "has_patch=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_patch=false" >> "$GITHUB_OUTPUT"
+            echo "No reproducible safe fix; no PR will be created."
+          fi
+
+      - name: Upload isolated patch
+        if: steps.capture.outputs.has_patch == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-v2-proposed-patch
+          path: codex.patch
+          if-no-files-found: error
+          retention-days: 7
+
+  test_and_open_pr:
+    needs: propose_patch
+    if: needs.propose_patch.outputs.has_patch == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout base commit with write access
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: codex-v2-proposed-patch
+
+      - name: Apply isolated patch and reject conflicts
+        run: |
+          set -euo pipefail
+          git apply --check codex.patch
+          git apply --index codex.patch
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies without Codex API key
+        run: python -m pip install -e '.[dev]'
+
+      - name: Verify complete tests and stress experiments
+        run: |
+          set -euo pipefail
+          python -m pytest -q
+          python -m research_agent_lab.frontier.v2.benchmark
+          python -m research_agent_lab.frontier.v2.stress
+
+      - name: Open PR for human review; never merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          branch="codex/v2-ci-repair-$RUN_ID"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git commit -m "fix(v2): Codex-proposed regression repair"
+          git push origin "$branch"
+          gh pr create --base main --head "$branch" \
+            --title "fix(v2): review Codex regression repair ($RUN_ID)" \
+            --body "Automatically proposed from a V2 test diagnosis. Full tests and the 33-case stress suite passed without an AI key in this PR job. No paid research experiments were run. **Manual code review and merge required.**"
