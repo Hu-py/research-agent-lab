@@ -309,3 +309,32 @@ file itself, custodians and sensitive source metadata are **not** stored here.
 ## V0.9: authenticated live research-stage timeline
 
 After executing [SQL 007](sql/007_frontier_live_events.sql), enable `stream_live_events=true` in the live workflow to record **real LangGraph node completions** in a private, append-only table. The Research Atlas workbench can display them during execution after secure Vercel configuration. [Setup instructions](docs/v09-live-events.md).
+
+
+## V1.0 — workbench-triggered research and paired Chinese/English report
+
+The Research Atlas Next.js workbench can dispatch this pre-existing GitHub
+Actions workflow through an **administrator-only** server-side endpoint,
+using a repository-scoped GitHub PAT. Only validated input values are
+submitted; no research content, CUSP data, model keys or Langfuse secrets
+are sent from the browser.
+
+[Live Research Agent Lab](.github/workflows/live-frontier.yml) has 10 inputs
+(maximum supported by GitHub workflow_dispatch). It now always writes results
+to the **isolated Supabase lab** (`SAVE_SUPABASE=true`) and exposes
+`bilingual_report` (enabled by default) instead of the older
+`save_supabase` input. The bilingual editor is optional and makes at most
+one additional bounded DeepSeek call **after** the scientific gate, preserving
+six zh/en scientific summary fields and uncertainty. If editorial generation
+fails, the scientific run still saves and the report explicitly says that
+the translation was unavailable.
+
+**Bilingual summary is not additional scientific evidence.** The raw
+candidate, pairwise juror and method review are unchanged and remain in
+Supabase; the translation does not upgrade feasibility, novelty or
+experimental verification. Results can be read in the new
+Research Atlas `多智能体博弈回放` page.
+
+The server-only setup and permissions are documented in the Workbench repo:
+[Game replay / Run launch documentation](
+https://github.com/Hu-py/research-opportunity-workbench/blob/main/docs/research-agent-game-replay.md).

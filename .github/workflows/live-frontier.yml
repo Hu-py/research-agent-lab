@@ -1,4 +1,5 @@
 name: Live Research Agent Lab (manual)
+run-name: "Research lab · ${{ inputs.evidence_source }} · G${{ inputs.max_generations }} · ${{ github.actor }}"
 
 on:
   workflow_dispatch:
@@ -51,8 +52,8 @@ on:
         required: true
         type: string
         default: "controlled_v07"
-      save_supabase:
-        description: "Write results into isolated lab_frontier_runs table"
+      bilingual_report:
+        description: "Create Chinese + English results summary (up to one extra paid model call)"
         required: true
         type: boolean
         default: true
@@ -96,10 +97,11 @@ jobs:
       MAX_PAIRS_INPUT: ${{ inputs.max_pairs }}
       RUN_SYNTHETIC_PILOT: ${{ inputs.synthetic_pilot }}
       STREAM_FRONTIER_EVENTS: ${{ inputs.stream_live_events }}
-      SAVE_SUPABASE: ${{ inputs.save_supabase }}
+      SAVE_SUPABASE: "true"
+      GENERATE_BILINGUAL_REPORT: ${{ inputs.bilingual_report }}
       SAVE_KNOWLEDGE_GRAPH: ${{ inputs.save_knowledge_graph }}
-      MAX_MODEL_CALLS: ${{ inputs.max_generations == '2' && '55' || '30' }}
-      MAX_RESERVED_TOKENS: "350000"
+      MAX_MODEL_CALLS: ${{ inputs.max_generations == '2' && (inputs.bilingual_report && '56' || '55') || (inputs.bilingual_report && '31' || '30') }}
+      MAX_RESERVED_TOKENS: ${{ inputs.max_generations == '2' && '390000' || '230000' }}
       LLM_REPLAY_CACHE_ENABLED: ${{ inputs.reuse_llm_cache }}
       LLM_REPLAY_NAMESPACE: ${{ inputs.replay_namespace }}
     steps:

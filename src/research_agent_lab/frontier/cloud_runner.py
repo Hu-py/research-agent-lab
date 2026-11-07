@@ -90,6 +90,7 @@ def main() -> int:
         papers = _choice("MAX_PAPERS_INPUT", {"4", "6", "8"})
         pairs = _choice("MAX_PAIRS_INPUT", {"1", "2", "3"})
         persist = _choice("SAVE_SUPABASE", {"true", "false"}) == "true"
+        bilingual_report = os.getenv("GENERATE_BILINGUAL_REPORT", "false").lower() == "true"
         write_graph = os.getenv("SAVE_KNOWLEDGE_GRAPH", "false").lower() == "true"
         if write_graph and (not persist or evidence not in ("team_evidence", "workbench_sync")):
             raise ValueError(
@@ -176,6 +177,8 @@ def main() -> int:
             args.append("--persist")
         if live_events:
             args.append("--stream-progress")
+        if bilingual_report:
+            args.append("--bilingual-report")
         status = frontier_main(args)
         if status != 0:
             return status

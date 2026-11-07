@@ -50,6 +50,9 @@ def persist_frontier_run(result: dict) -> None:
             "screening": result.get("screening", {}),
             "knowledge": result.get("knowledge", {}),
             "comparison_context": result.get("comparison_context", {}),
+            "bilingual_report": result.get("bilingual_report"),
+            "provider_calls": result.get("provider_calls", result["model_calls"]),
+            "cache_hits": result.get("cache_hits", 0),
             "event_log": result.get("event_log", []),
         }
     }

@@ -22,6 +22,7 @@ from .mock import FrontierMockModel
 from .storage import persist_frontier_run, check_frontier_supabase
 from .remote_memory import hydrate_recent_memory
 from .live_events import FrontierEventPublisher, check_frontier_event_store
+from .bilingual_report import create_bilingual_report
 
 
 def _read_json(path: str):
@@ -50,6 +51,8 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--memory", default="outputs/frontier-memory.sqlite")
     run.add_argument("--out", default="", help="Output JSON; stdout if omitted")
     run.add_argument("--persist", action="store_true", help="Explicitly persist selected metadata to Supabase")
+    run.add_argument("--bilingual-report", action="store_true",
+                     help="One additional bounded model call for Chinese+English research summary")
     run.add_argument("--stream-progress", action="store_true",
                      help="Opt-in private per-node Supabase live events; requires SQL 007 and --persist")
 
@@ -134,6 +137,22 @@ def main(argv: list[str] | None = None) -> int:
                         event_sink=publisher.emit if publisher else None,
                         run_id=publisher.run_id if publisher else None,
                     )
+                    if args.bilingual_report:
+                        try:
+                            result["bilingual_report"] = create_bilingual_report(result, model)
+                        except (ValueError, RuntimeError, KeyError, TypeError):
+                            # Editorial translation is optional and can never
+                            # invalidate a completed, paid scientific experiment.
+                            result["bilingual_report"] = {
+                                "available": False,
+                                "reason_code": "TRANSLATION_UNAVAILABLE",
+                                "scientific_evidence_unchanged": True,
+                            }
+                        result["model_calls"] = model.usage.calls
+                        result["provider_calls"] = model.usage.provider_calls
+                        result["cache_hits"] = model.usage.cache_hits
+                        result["actual_input_tokens"] = model.usage.input_tokens
+                        result["actual_output_tokens"] = model.usage.output_tokens
                     if trace_root is not None:
                         trace_root.update(
                             output={"run_id": result["run_id"],
