@@ -51,56 +51,116 @@ def _safe_candidate_error(exc: ValueError) -> str:
     return "SCHEMA_VALIDATION_FAILED"
 
 
+_SCALAR_FIELDS = ("title", "question", "mechanism", "falsifiable_prediction",
+                  "method", "minimal_experiment")
+_LIST_FIELDS = ("baselines", "paper_ids", "dataset_ids", "limitations")
+
+
+def _field_hint(exc: ValueError) -> str:
+    """Stable schema field only; do not expose scientific draft text."""
+    message = str(exc)
+    for field in (*_SCALAR_FIELDS, *_LIST_FIELDS):
+        if message.endswith(": " + field):
+            return field
+    if "paper IDs absent" in message:
+        return "paper_ids"
+    if "dataset IDs absent" in message:
+        return "dataset_ids"
+    return "candidate_schema"
+
+
+def _reuse_valid_draft_fields(original: object, corrected: object,
+                              snapshot: Snapshot) -> object:
+    """Allow a repaired partial JSON without losing already valid original data."""
+    if not isinstance(original, dict) or not isinstance(corrected, dict):
+        return corrected
+    old = _canonicalize_candidate_lists(original)
+    new = _canonicalize_candidate_lists(corrected)
+    merged = dict(new)
+    for field in _SCALAR_FIELDS:
+        candidate_value = merged.get(field)
+        old_value = old.get(field)
+        if (not isinstance(candidate_value, str) or not candidate_value.strip()
+                or len(candidate_value) > 1200):
+            if isinstance(old_value, str) and old_value.strip() and len(old_value) <= 1200:
+                merged[field] = old_value
+    registered = {
+        "paper_ids": {p.id for p in snapshot.papers},
+        "dataset_ids": {d.id for d in snapshot.datasets},
+    }
+    for field in _LIST_FIELDS:
+        replacement = merged.get(field)
+        old_value = old.get(field)
+
+        def valid(value):
+            return isinstance(value, list) and all(
+                isinstance(item, str) and len(item) <= 350 for item in value
+            ) and (field not in ("baselines", "paper_ids") or
+                   any(x.strip() for x in value)) and (
+                field not in registered or set(value) <= registered[field]
+            )
+
+        if not valid(replacement) and valid(old_value):
+            merged[field] = old_value
+    return merged
+
+
+def _rejection_code(exc: ValueError) -> str:
+    """Allowlist-like code only; never include proprietary scientific content."""
+    text = str(exc)
+    if text.startswith("Candidate contract repair failed: "):
+        return text.partition(": ")[2].split(":", 1)[0]
+    return _safe_candidate_error(exc)
+
+
 def make_candidate(raw: dict, snapshot: Snapshot, *, identifier: str,
                    origin: str, parent_ids: list[str], generation: int,
                    model: BudgetedModel | None = None) -> dict:
-    """Validate candidate; optionally make one bounded, evidence-bound repair.
+    """Validate and permit at most two bounded schema repair attempts.
 
-    No arbitrary values are invented by Python, and repair cannot loosen the
-    citation/data registry. Model-call budgets apply to corrective calls.
+    Previously valid original fields can be preserved across incomplete
+    repair responses; no research content or references are invented.
     """
     candidate = _canonicalize_candidate_lists(raw)
-    try:
-        record = validate_candidate(candidate, snapshot, origin)
-    except ValueError as error:
-        if model is None:
-            raise
-        reason = _safe_candidate_error(error)
-        corrected = model.complete(
-            role="frontier_candidate_repair",
-            system=SYSTEM + (
-                " Repair the JSON STRUCTURE of one proposed hypothesis. "
-                "Only cite supplied paper and dataset IDs; do NOT invent sources, "
-                "numerical findings, baseline results or data access. "
-                "Do not replace an uncertain claim with a false confident one."
-            ),
-            payload={
-                "original_candidate": candidate,
-                "issue_code": reason,
-                "allowed_paper_ids": [p.id for p in snapshot.papers],
-                "allowed_dataset_ids": [d.id for d in snapshot.datasets],
-                "task": (
-                    "Return exactly one COMPLETE hypothesis JSON object with "
-                    "nonempty string fields title, question, mechanism, "
-                    "falsifiable_prediction, method and minimal_experiment. "
-                    "Return baselines (nonempty list of strings), paper_ids "
-                    "(nonempty list of registered IDs), dataset_ids (list of "
-                    "registered IDs, empty when none), limitations (list of "
-                    "short strings). All items must be strings <=350 chars. "
-                    "Preserve the scientific substance; explicitly state "
-                    "limitations when datasets are unavailable."
-                ),
-            },
-        )
+    for attempt in range(3):
         try:
-            record = validate_candidate(
-                _canonicalize_candidate_lists(corrected), snapshot, origin
+            record = validate_candidate(candidate, snapshot, origin)
+            break
+        except ValueError as error:
+            if model is None or attempt == 2:
+                if model is None:
+                    raise
+                raise ValueError(
+                    "Candidate contract repair failed: " +
+                    _safe_candidate_error(error)
+                ) from None
+            corrected = model.complete(
+                role="frontier_candidate_repair",
+                system=SYSTEM + (
+                    " Repair a malformed scientific hypothesis JSON contract. "
+                    "Never fabricate research findings, datasets, citations or "
+                    "data access. Return a COMPLETE candidate JSON object. "
+                    "Keep scientifically valid draft fields unchanged."
+                ),
+                payload={
+                    "original_candidate": candidate,
+                    "issue_code": _safe_candidate_error(error),
+                    "invalid_field": _field_hint(error),
+                    "attempt_number": attempt + 1,
+                    "allowed_paper_ids": [p.id for p in snapshot.papers],
+                    "allowed_dataset_ids": [d.id for d in snapshot.datasets],
+                    "task": (
+                        "Provide nonempty TEXT for title, question, mechanism, "
+                        "falsifiable_prediction, method and minimal_experiment "
+                        "(each <=1200 characters); baselines (nonempty list[str]), "
+                        "paper_ids (nonempty registered list[str]), dataset_ids "
+                        "(registered list[str], may be empty), limitations "
+                        "(list[str]). Each list item <=350 characters. Repair "
+                        "invalid_field, retain valid science, invent no evidence."
+                    ),
+                },
             )
-        except ValueError as corrected_error:
-            raise ValueError(
-                "Candidate contract repair failed: " +
-                _safe_candidate_error(corrected_error)
-            ) from None
+            candidate = _reuse_valid_draft_fields(candidate, corrected, snapshot)
     record.update({
         "id": identifier,
         "origin": origin,
@@ -111,9 +171,9 @@ def make_candidate(raw: dict, snapshot: Snapshot, *, identifier: str,
     })
     return record
 
-
 def create_seed_candidates(snapshot: Snapshot, model: BudgetedModel,
-                           strategy: str, memory_hints: list[dict]) -> list[dict]:
+                           strategy: str, memory_hints: list[dict],
+                           rejections: list[dict] | None = None) -> list[dict]:
     candidates = []
     for idx, lens in enumerate(LENSES, start=1):
         raw = model.complete(
@@ -131,10 +191,19 @@ def create_seed_candidates(snapshot: Snapshot, model: BudgetedModel,
                         "paper_ids, dataset_ids and limitations.",
             },
         )
-        candidates.append(make_candidate(
-            raw, snapshot, identifier=f"H{idx:03d}", origin=lens,
-            parent_ids=[], generation=0, model=model
-        ))
+        try:
+            candidates.append(make_candidate(
+                raw, snapshot, identifier=f"H{idx:03d}", origin=lens,
+                parent_ids=[], generation=0, model=model
+            ))
+        except ValueError as exc:
+            if rejections is not None:
+                rejections.append({"id": f"H{idx:03d}", "code": _rejection_code(exc)})
+    if len(candidates) < 2:
+        raise ValueError(
+            "Initial hypotheses insufficient: fewer than two valid "
+            "evidence-checked candidates remained after bounded repair"
+        )
     return candidates
 
 
@@ -251,7 +320,8 @@ def run_tournament(candidates: list[dict], model: BudgetedModel,
 
 def evolve_hypotheses(pool: list[dict], snapshot: Snapshot, model: BudgetedModel,
                       *, strategy: str, memory_hints: list[dict],
-                      generation: int, max_children: int = 2) -> list[dict]:
+                      generation: int, max_children: int = 2,
+                      rejections: list[dict] | None = None) -> list[dict]:
     """Create new child versions. NEVER overwrite parent candidates."""
     champions = sorted(pool, key=lambda x: (-x["elo"], x["id"]))[:2]
     children: list[dict] = []
@@ -298,10 +368,14 @@ def evolve_hypotheses(pool: list[dict], snapshot: Snapshot, model: BudgetedModel
             },
         )
         identifier = f"H{next_id + child_index:03d}"
-        child = make_candidate(raw, snapshot, identifier=identifier, origin=method,
-                               parent_ids=[x["id"] for x in parents], generation=generation,
-                               model=model)
-        children.append(child)
+        try:
+            child = make_candidate(raw, snapshot, identifier=identifier, origin=method,
+                                   parent_ids=[x["id"] for x in parents], generation=generation,
+                                   model=model)
+            children.append(child)
+        except ValueError as exc:
+            if rejections is not None:
+                rejections.append({"id": identifier, "code": _rejection_code(exc)})
     return children
 
 
