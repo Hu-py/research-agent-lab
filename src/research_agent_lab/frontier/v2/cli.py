@@ -18,6 +18,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-backtracks", type=int, default=3)
     parser.add_argument("--events", action="store_true",
                         help="Show only sanitized node completion and routing events")
+    parser.add_argument("--task-audit", action="store_true",
+                        help="Show controller-issued contracts, independent task "
+                             "evaluations and active defect repair plans")
     args = parser.parse_args(argv)
     limits = V2Limits(max_operations=args.max_operations,
                       global_backtracks=args.max_backtracks)
@@ -35,6 +38,10 @@ def main(argv: list[str] | None = None) -> int:
     }
     if args.events:
         report["node_events"] = state["events"]
+    if args.task_audit:
+        report["task_contracts"] = state.get("task_contracts", [])
+        report["task_evaluations"] = state.get("task_evaluations", [])
+        report["last_repair_plan"] = state.get("repair_plan", {})
     print(json.dumps(report, indent=2, ensure_ascii=False))
     return 0 if state["status"] in ("completed", "safe_stopped") else 1
 

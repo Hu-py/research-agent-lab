@@ -226,3 +226,16 @@ def test_technical_failed_executor_recovery_is_not_scientific_validation():
     evaluations = [e for e in run["task_evaluations"] if e["stage"] == "verification"]
     assert "EXPERIMENT_FAILED" in evaluations[-1]["verified_resolved_issue_codes"]
     assert evaluations[-1]["defect_progress"]["scientific_quality_gain_estimated"] is False
+
+
+def test_cli_can_display_independent_task_audit_without_private_context(capsys):
+    from research_agent_lab.frontier.v2.cli import main
+    assert main(["--scenario", "recover_feasibility", "--task-audit"]) == 0
+    output = json.loads(capsys.readouterr().out)
+    assert output["execution_mode"] == "synthetic_offline_no_paid_ai"
+    assert output["task_contracts"]
+    assert output["task_evaluations"]
+    assert any("NO_FEASIBLE_CANDIDATES" in x["issue_codes"]
+               for x in output["task_evaluations"])
+    assert all(x["scientific_quality_verified"] is False
+               for x in output["task_evaluations"])

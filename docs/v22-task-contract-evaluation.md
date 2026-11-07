@@ -116,7 +116,7 @@ task verdict and unresolved-issue counts.
 python -m pytest -q tests/test_v2_task_evaluation.py
 python -m pytest -q tests/test_v2_architecture.py tests/test_v2_supervisor_policy.py
 python -m research_agent_lab.frontier.v2.benchmark
-python -m research_agent_lab.frontier.v2.cli --scenario experimental_refutation --events
+python -m research_agent_lab.frontier.v2.cli --scenario experimental_refutation --task-audit --events
 ~~~
 
 The acceptance cases include prior failed paper screening, failed task
