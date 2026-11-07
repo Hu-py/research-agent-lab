@@ -42,7 +42,9 @@ jobs:
       - name: Install no-observability development dependencies
         run: python -m pip install -e ".[dev]"
       - name: Verify independent Meta Supervisor and nested-loop contracts
-        run: python -m pytest -q tests/test_v2_architecture.py
+        run: python -m pytest -q tests/test_v2_architecture.py tests/test_v2_supervisor_policy.py
+      - name: Verify synthetic Supervisor decision audit
+        run: python -m research_agent_lab.frontier.v2.benchmark
       - name: Execute selected fictional control-flow rehearsal
         env:
           SCENARIO: ${{ inputs.scenario }}

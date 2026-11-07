@@ -348,3 +348,8 @@ Real cloud research now uses deterministic **pre-Elo** data and protocol checks,
 ## V2.0 architecture: Meta Supervisor + four research loops
 
 An **opt-in, zero-cost nested LangGraph** orchestration now models evidence, formulation, competition and experimental feedback as four local loops, supervised by a parent controller with reason-coded cross-loop backtracking. The current paid V1 workflow remains unchanged. [Architecture and free offline test scenarios](docs/v20-nested-research-loop-architecture.md).
+
+
+## V2.1: auditable Meta Supervisor (offline only)
+
+The nested control graph now records **grounded observations, diagnosed uncertainty, proposed alternative routes, independent constraint verification, and noncausal outcome feedback**. It abstains on unsafe progression and never treats simulated progress as scientific truth. [Architecture, test cases and limitations](docs/v21-meta-supervisor-decision-audit.md). Paid production workflows remain unchanged.

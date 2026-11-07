@@ -71,6 +71,8 @@ class V2State(TypedDict, total=False):
     # Append-only audit
     events: list[dict[str, Any]]
     decisions: list[dict[str, Any]]
+    decision_feedback: list[dict[str, Any]]
+    policy_audit: dict[str, Any]
     # Final deliverable
     status: str
     report: dict[str, Any]
@@ -116,7 +118,8 @@ def initial_state(objective: str, *, context: dict[str, Any] | None = None) -> V
                           "competition": 0, "verification": 0},
         "global_backtracks": 0, "reframe_count": 0,
         "operation_count": 0, "signature_hits": {},
-        "events": [], "decisions": [], "status": "running", "report": {},
+        "events": [], "decisions": [], "decision_feedback": [],
+        "policy_audit": {}, "status": "running", "report": {},
     }
 
 

@@ -29,6 +29,8 @@ def main(argv: list[str] | None = None) -> int:
         "status": state["status"],
         "report": state["report"],
         "supervisor_decisions": state["decisions"],
+        "decision_feedback": state.get("decision_feedback", []),
+        "policy_audit": state.get("policy_audit", {}),
         "node_count": len(state["events"]),
     }
     if args.events:

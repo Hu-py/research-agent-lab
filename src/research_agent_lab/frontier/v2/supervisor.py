@@ -11,6 +11,11 @@ import hashlib
 import json
 
 from .state import V2Limits, V2State, codes, event
+from .evidence import observe, diagnose
+from .policy import propose_options, verify_option
+from .feedback import (
+    metric_value, evaluate_pending_decision, descriptive_policy_audit
+)
 
 STAGES = frozenset(("evidence", "formulation", "competition", "verification"))
 HARD_DATA_BLOCKERS = frozenset((
@@ -86,6 +91,41 @@ def choose_next(state: V2State, limits: V2Limits) -> dict:
     if increment and backtracks >= limits.global_backtracks:
         next_stage, reason, increment = "safe_stop", "GLOBAL_BACKTRACK_LIMIT", False
 
+    # A separate deterministic observer recomputes process facts. The proposer
+    # cannot authorize data, call a model or declare scientific success.
+    observations = observe(state, max_operations=limits.max_operations)
+    diagnosis = diagnose(observations)
+    proposed = propose_options(state, observations, next_stage, reason)
+    considered = [
+        {**option, "verification": verify_option(
+            state, observations, option, limits
+        )} for option in proposed
+    ]
+    approved = next(
+        (option for option in considered if option["verification"]["approved"]),
+        None
+    )
+    verifier_veto = []
+    if approved is None:
+        next_stage, reason, increment = (
+            "safe_stop", "ALL_PROPOSALS_VETOED", False
+        )
+        verifier_veto = ["NO_SAFE_APPROVED_PROPOSAL"]
+        selected_metric = "none"
+    elif approved["action"] != next_stage:
+        # Abstain rather than promote a self-reported success or bypass a
+        # scientific permission, evidence or experiment guard.
+        verifier_veto = considered[0]["verification"]["veto_codes"]
+        next_stage, reason, increment = (
+            approved["action"], "PREFERRED_ROUTE_VETOED", False
+        )
+        selected_metric = approved["expected_metric"]
+    else:
+        selected_metric = approved["expected_metric"]
+    past_feedback = evaluate_pending_decision(
+        state, max_operations=limits.max_operations
+    )
+    policy_audit = descriptive_policy_audit(past_feedback)
     # Detect identical research-state failures, not just repeated action labels.
     # A short fingerprint is safe to persist; private texts never go into
     # event logs or into the key itself.
@@ -106,18 +146,39 @@ def choose_next(state: V2State, limits: V2Limits) -> dict:
     signature = f"{prior}:{signal}:{','.join(issues)}:{next_stage}:{digest}"
     hits = state.get("signature_hits", {}).get(signature, 0) + 1
     if hits > limits.max_repeat_signatures:
-        next_stage, reason = "safe_stop", "STAGNATION_DETECTED"
+        next_stage, reason, increment = "safe_stop", "STAGNATION_DETECTED", False
+        selected_metric = "none"
+        verifier_veto = [*verifier_veto, "STAGNATION_DETECTED"]
     signature_hits = {**state.get("signature_hits", {}), signature: hits}
     # Defensive checks: no LLM/driver can route into an unknown graph node.
     if next_stage not in {*STAGES, "reframe", "finalize", "safe_stop"}:
-        next_stage, reason = "safe_stop", "INVALID_ROUTE"
+        next_stage, reason, increment = "safe_stop", "INVALID_ROUTE", False
+        selected_metric = "none"
+        verifier_veto = [*verifier_veto, "INVALID_ROUTE"]
+    decision_number = len(state.get("decisions", [])) + 1
+    previous = state.get("decisions", [])
+    decision_id = "D" + str(decision_number).zfill(4)
     return {
         "next_stage": next_stage,
         "global_backtracks": backtracks + int(increment),
         "signature_hits": signature_hits,
-        "decisions": [*state.get("decisions", []), {
+        "decisions": [*previous, {
+            "decision_id": decision_id,
             "from": prior, "to": next_stage, "reason_code": reason,
             "issue_codes": issues, "operation_count": steps,
+            "observed_facts": observations,
+            "problem_diagnosis": diagnosis,
+            "alternatives": considered,
+            "selected_expected_metric": selected_metric,
+            "expected_metric": selected_metric,
+            "metric_before": metric_value(observations, selected_metric),
+            "verifier_veto_codes": verifier_veto,
+            "decision_method": "frozen_heuristics_plus_independent_guard",
+            "confidence_calibrated": False,
+            "abstained": next_stage == "safe_stop",
+            "scientific_quality_verified": False,
         }],
+        "decision_feedback": past_feedback,
+        "policy_audit": policy_audit,
         "events": event(state, phase="meta_supervisor", action=reason, issue_codes=issues),
     }

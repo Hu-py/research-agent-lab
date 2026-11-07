@@ -372,6 +372,9 @@ def _report(state: V2State, *, completed: bool) -> dict:
         "operation_count": state.get("operation_count", 0),
         "global_backtracks": state.get("global_backtracks", 0),
         "local_retries": dict(state.get("local_retries", {})),
+        "supervisor_policy_audit": dict(state.get("policy_audit", {})),
+        "supervisor_decision_count": len(state.get("decisions", [])),
+        "route_success_is_not_scientific_truth": True,
     }
 
 
