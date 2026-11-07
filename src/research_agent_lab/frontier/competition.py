@@ -102,6 +102,10 @@ def _reuse_valid_draft_fields(original: object, corrected: object,
 
         if not valid(replacement) and valid(old_value):
             merged[field] = old_value
+    if not isinstance(merged.get("execution_plan"), dict) and isinstance(
+        old.get("execution_plan"), dict
+    ):
+        merged["execution_plan"] = old["execution_plan"]
     return merged
 
 
@@ -173,7 +177,8 @@ def make_candidate(raw: dict, snapshot: Snapshot, *, identifier: str,
 
 def create_seed_candidates(snapshot: Snapshot, model: BudgetedModel,
                            strategy: str, memory_hints: list[dict],
-                           rejections: list[dict] | None = None) -> list[dict]:
+                           rejections: list[dict] | None = None,
+                           min_candidates: int = 2) -> list[dict]:
     candidates = []
     for idx, lens in enumerate(LENSES, start=1):
         raw = model.complete(
@@ -188,7 +193,15 @@ def create_seed_candidates(snapshot: Snapshot, model: BudgetedModel,
                 "already_proposed_titles": [x["title"] for x in candidates],
                 "task": "Return a single complete candidate with title, question, mechanism, "
                         "falsifiable_prediction, method, minimal_experiment, baselines, "
-                        "paper_ids, dataset_ids and limitations.",
+                        "paper_ids, dataset_ids and limitations. For a feasible empirical "
+                        "study include execution_plan: {study_type:'empirical',"
+                        "unit_of_analysis, outcome_field, baseline_method,"
+                        "evaluation_metric, split_strategy, steps:[...],"
+                        "dataset_field_map:[{dataset_id,fields:[...]}]}. "
+                        "Only select actual listed, independently access-verified data "
+                        "and exactly registered field names; never invent a dataset "
+                        "or imply metadata registration grants raw-data access. "
+                        "If none is accessible, state that limitation explicitly.",
             },
         )
         try:
@@ -199,9 +212,9 @@ def create_seed_candidates(snapshot: Snapshot, model: BudgetedModel,
         except ValueError as exc:
             if rejections is not None:
                 rejections.append({"id": f"H{idx:03d}", "code": _rejection_code(exc)})
-    if len(candidates) < 2:
+    if len(candidates) < min_candidates:
         raise ValueError(
-            "Initial hypotheses insufficient: fewer than two valid "
+            "Initial hypotheses insufficient: fewer than the requested valid "
             "evidence-checked candidates remained after bounded repair"
         )
     return candidates
@@ -364,7 +377,9 @@ def evolve_hypotheses(pool: list[dict], snapshot: Snapshot, model: BudgetedModel
                 "past_experience": memory_hints[:6],
                 "task": "Return revised hypothesis with title, question, mechanism, "
                         "falsifiable_prediction, method, minimal_experiment, baselines, "
-                        "paper_ids, dataset_ids and limitations.",
+                        "paper_ids, dataset_ids and limitations. Include the full "
+                        "execution_plan contract as used by the seed hypotheses; "
+                        "only registered fields and independently authorized data.",
             },
         )
         identifier = f"H{next_id + child_index:03d}"
@@ -393,7 +408,9 @@ def expand_hypothesis(pool: list[dict], snapshot: Snapshot, model: BudgetedModel
             "already_proposed_titles": [x["title"] for x in pool],
             "task": "Propose a DISTINCT complete hypothesis with title, question, "
                     "mechanism, falsifiable_prediction, method, minimal_experiment, "
-                    "baselines, paper_ids, dataset_ids and limitations.",
+                    "baselines, paper_ids, dataset_ids and limitations and a "
+                    "concrete execution_plan with exact registered datasets, "
+                    "fields, baselines, test split and 2+ executable steps.",
         },
     )
     return make_candidate(

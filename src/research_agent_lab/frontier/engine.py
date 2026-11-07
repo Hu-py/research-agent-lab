@@ -20,6 +20,7 @@ from .memory import MemoryStore
 from .science import validate_scientifically, run_csv_pilot
 from .synthetic_pilot import run_synthetic_network_pilot, can_run_network_pilot
 from .supervisor import choose_next
+from .feasibility_gate import screen_pool, minimal_viable_plan
 
 
 @dataclass(frozen=True)
@@ -30,6 +31,8 @@ class FrontierConfig:
     discover: bool = False
     minimum_generations: int = 0
     synthetic_pilot: bool = False
+    feasibility_first: bool = False
+    max_feasibility_revisions: int = 2
 
     def __post_init__(self):
         if not 0 <= self.max_generations <= 3:
@@ -40,6 +43,8 @@ class FrontierConfig:
             raise ValueError("max_papers must be between 1 and 40")
         if not 1 <= self.max_pairs_per_tournament <= 6:
             raise ValueError("max_pairs_per_tournament must be between 1 and 6")
+        if not 0 <= self.max_feasibility_revisions <= 3:
+            raise ValueError("max_feasibility_revisions must be between 0 and 3")
 
 
 class FrontierState(TypedDict):
@@ -56,6 +61,8 @@ class FrontierState(TypedDict):
     verification: dict
     pilot: dict
     final: dict
+    feasibility: dict
+    feasibility_revisions: int
 
 
 def build_frontier_graph(model: BudgetedModel, config: FrontierConfig, *,
@@ -96,7 +103,8 @@ def build_frontier_graph(model: BudgetedModel, config: FrontierConfig, *,
         rejected: list[dict] = []
         pool = create_seed_candidates(
             snapshot, model, state["strategy"], state["memory_hints"],
-            rejections=rejected
+            rejections=rejected,
+            min_candidates=0 if config.feasibility_first else 2
         )
         return {
             "candidates": pool,
@@ -107,6 +115,168 @@ def build_frontier_graph(model: BudgetedModel, config: FrontierConfig, *,
                 "strategy": state["strategy"]
             }],
         }
+
+
+    def feasibility_node(state: FrontierState) -> dict:
+        """Provisional, deterministic field-level check, never an LLM score."""
+        snapshot = Snapshot.model_validate(state["snapshot"])
+        pool, report = screen_pool(state["candidates"], snapshot)
+        return {
+            "candidates": pool,
+            "feasibility": report,
+            "events": state["events"] + [{
+                "stage": "feasibility_gate",
+                "eligible_count": report["eligible_count"],
+                "blocked_count": report["blocked_count"],
+                "revision_attempt": state["feasibility_revisions"],
+                "reason_counts": report["reason_counts"],
+            }],
+        }
+
+    def feasibility_route(state: FrontierState) -> str:
+        eligible = state["feasibility"]["eligible_count"]
+        if eligible >= 2:
+            return "tournament"
+        if eligible == 1:
+            return "verify"
+        snapshot = Snapshot.model_validate(state["snapshot"])
+        can_revise_with_real_data = any(
+            d.access_verified and d.fields for d in snapshot.datasets
+        )
+        remaining = model.max_calls - model.usage.calls
+        if (can_revise_with_real_data
+                and state["feasibility_revisions"] < config.max_feasibility_revisions
+                and remaining >= 5):
+            return "feasibility_revise"
+        return "no_viable_study"
+
+    def feasibility_revise_node(state: FrontierState) -> dict:
+        """Use *specific blocked reasons* to revise the minimal empirical scope.
+
+        Does not re-evaluate blocked proposals through Elo. A bounded repair
+        creates a new immutable descendant, preserving the failed parent.
+        """
+        snapshot = Snapshot.model_validate(state["snapshot"])
+        blocked = sorted(
+            (c for c in state["candidates"] if c["status"] == "blocked"),
+            key=lambda c: (len(c.get("feasibility", {}).get("reason_codes", [])), c["id"])
+        )
+        source = blocked[0] if blocked else None
+        children = []
+        rejection_code = None
+        if source is not None:
+            from .competition import make_candidate
+            verified_assets = [
+                {"id": d.id, "fields": d.fields, "description": d.description[:200]}
+                for d in snapshot.datasets if d.access_verified and d.fields
+            ]
+            try:
+                raw = model.complete(
+                    role="frontier_feasibility_reviser",
+                    system=(
+                        "You are an evidence-first research methods engineer. "
+                        "Revise this failed proposal into a smaller, genuinely "
+                        "executable empirical study using ONLY supplied independently "
+                        "verified dataset IDs and exact registered column names. "
+                        "Never assert data ownership, an experiment result, novelty, "
+                        "or schema fields that have not been registered. "
+                        "Do not merely rewrite the title. JSON only."
+                    ),
+                    payload={
+                        "previous_candidate": source,
+                        "blocking_reason_codes": source["feasibility"]["reason_codes"],
+                        "verified_assets": verified_assets,
+                        "registered_paper_ids": [p.id for p in snapshot.papers],
+                        "task": (
+                            "Return a COMPLETE candidate with title, question, mechanism, "
+                            "falsifiable_prediction, method, minimal_experiment, "
+                            "baselines, paper_ids, dataset_ids, limitations, and "
+                            "execution_plan: {study_type:'empirical',unit_of_analysis,"
+                            "outcome_field,baseline_method,evaluation_metric,"
+                            "split_strategy,steps:[...],"
+                            "dataset_field_map:[{dataset_id,fields:[...]}]}. "
+                            "Produce the smallest testable comparison with a trivial baseline "
+                            "and explicit group split. If impossible, state missing inputs "
+                            "and do not invent any registered facts."
+                        ),
+                    },
+                )
+                idx = max([int(c["id"][1:]) for c in state["candidates"]] or [0]) + 1
+                new_child = make_candidate(
+                    raw, snapshot, identifier=f"H{idx:03d}",
+                    origin="feasibility_repair",
+                    parent_ids=[source["id"]],
+                    generation=source["generation"] + 1,
+                    model=None
+                )
+                children.append(new_child)
+            except (ValueError, TypeError, KeyError):
+                rejection_code = "FEASIBILITY_REPAIR_SCHEMA_INVALID"
+        return {
+            "candidates": state["candidates"] + children,
+            "feasibility_revisions": state["feasibility_revisions"] + 1,
+            "events": state["events"] + [{
+                "stage": "feasibility_revision",
+                "revision_attempt": state["feasibility_revisions"] + 1,
+                "children": [{"id": c["id"], "parent_ids": c["parent_ids"]}
+                             for c in children],
+                "blocked_reason_codes": (
+                    source.get("feasibility", {}).get("reason_codes", []) if source else []
+                ),
+                "rejection_code": rejection_code,
+            }],
+        }
+
+    def no_viable_node(state: FrontierState) -> dict:
+        snapshot = Snapshot.model_validate(state["snapshot"])
+        blocked = [c for c in state["candidates"] if c.get("status") == "blocked"]
+        plan = minimal_viable_plan(snapshot, blocked)
+        pilot = {}
+        if config.synthetic_pilot and can_run_network_pilot(snapshot.research_line.id):
+            pilot = run_synthetic_network_pilot()
+            plan["method_only_synthetic_pilot_executed"] = True
+            plan["method_pilot_warning"] = (
+                "Toy software sanity checks are not empirical validation or evidence "
+                "of novelty, network realism, or access to observed datasets."
+            )
+        final = {
+            "status": "no_executable_candidates",
+            "winner": None,
+            "ranked_candidates": [],
+            "archived_candidates": state["candidates"],
+            "lineage": [{
+                "id": c["id"], "parent_ids": c["parent_ids"],
+                "generation": c["generation"], "origin": c["origin"],
+                "status": c["status"]
+            } for c in state["candidates"]],
+            "matches": state["matches"],
+            "supervisor_decisions": state["decisions"],
+            "verification": {
+                "data_feasible_assessment": False,
+                "dataset_access_evidence_verified": False,
+                "evidence_limitations": plan["blocked_reason_codes"],
+                "novelty_verified": False,
+                "experimental_claim_verified": False,
+            },
+            "pilot": pilot,
+            "knowledge": state["query_diagnostics"],
+            "screening": state["screening"],
+            "feasibility": state["feasibility"],
+            "minimum_viable_plan": plan,
+            "event_log": state["events"] + [{
+                "stage": "no_recommendation",
+                "eligible_count": 0,
+                "blocked_count": len(blocked),
+                "reason_counts": state["feasibility"].get("reason_counts", {}),
+                "plan_mode": plan["mode"],
+            }],
+            "generation_count": state["generation"],
+            "human_review_required": True,
+            "novelty_verified": False,
+            "selection_is_llm_assessed_only": True,
+            "automatic_human_push": False,
+        }
+        return {"final": final, "pilot": pilot, "events": final["event_log"]}
 
     def tournament_node(state: FrontierState) -> dict:
         ranked, matches = run_tournament(
@@ -264,6 +434,8 @@ def build_frontier_graph(model: BudgetedModel, config: FrontierConfig, *,
                 "pilot": state["pilot"],
                 "knowledge": state["query_diagnostics"],
                 "screening": state["screening"],
+                "feasibility": state["feasibility"] if config.feasibility_first else {},
+                "minimum_viable_plan": None,
                 "event_log": state["events"],
                 "generation_count": state["generation"],
                 "human_review_required": True,
@@ -277,6 +449,9 @@ def build_frontier_graph(model: BudgetedModel, config: FrontierConfig, *,
     graph.add_node("discover", discover_node)
     graph.add_node("screen", screen_node)
     graph.add_node("generate", generate_node)
+    graph.add_node("feasibility", feasibility_node)
+    graph.add_node("feasibility_revise", feasibility_revise_node)
+    graph.add_node("no_viable_study", no_viable_node)
     graph.add_node("tournament", tournament_node)
     graph.add_node("supervisor", supervisor_node)
     graph.add_node("evolve", evolve_node)
@@ -290,7 +465,18 @@ def build_frontier_graph(model: BudgetedModel, config: FrontierConfig, *,
     )
     graph.add_edge("discover", "screen")
     graph.add_edge("screen", "generate")
-    graph.add_edge("generate", "tournament")
+    if config.feasibility_first:
+        graph.add_edge("generate", "feasibility")
+        graph.add_conditional_edges(
+            "feasibility", feasibility_route,
+            {"tournament": "tournament", "verify": "verify",
+             "feasibility_revise": "feasibility_revise",
+             "no_viable_study": "no_viable_study"},
+        )
+        graph.add_edge("feasibility_revise", "feasibility")
+        graph.add_edge("no_viable_study", END)
+    else:
+        graph.add_edge("generate", "tournament")
     graph.add_edge("tournament", "supervisor")
     graph.add_conditional_edges("supervisor",
                                 lambda state: state["decisions"][-1]["action"],
@@ -299,13 +485,15 @@ def build_frontier_graph(model: BudgetedModel, config: FrontierConfig, *,
     # Only legitimate, validated children may trigger another tournament.
     graph.add_conditional_edges(
         "evolve",
-        lambda state: "verify" if state["events"][-1].get("no_valid_children") else "tournament",
-        {"verify": "verify", "tournament": "tournament"}
+        lambda state: ("verify" if state["events"][-1].get("no_valid_children")
+                       else "feasibility" if config.feasibility_first else "tournament"),
+        {"verify": "verify", "tournament": "tournament", "feasibility": "feasibility"}
     )
     graph.add_conditional_edges(
         "expand",
-        lambda state: "verify" if state["events"][-1].get("no_valid_children") else "tournament",
-        {"verify": "verify", "tournament": "tournament"}
+        lambda state: ("verify" if state["events"][-1].get("no_valid_children")
+                       else "feasibility" if config.feasibility_first else "tournament"),
+        {"verify": "verify", "tournament": "tournament", "feasibility": "feasibility"}
     )
     graph.add_edge("rollback", "verify")
     graph.add_edge("verify", "finish")
@@ -341,7 +529,8 @@ def run_frontier(snapshot: Snapshot, model: BudgetedModel, memory: MemoryStore,
         "query_diagnostics": {}, "screening": {}, "candidates": [],
         "matches": [], "generation": 0, "strategy": strategy,
         "memory_hints": hints, "decisions": [], "events": [],
-        "verification": {}, "pilot": {}, "final": {}
+        "verification": {}, "pilot": {}, "final": {},
+        "feasibility": {}, "feasibility_revisions": 0
     }
     execution = build_frontier_graph(
         model, config, source_allowlist=source_allowlist,
@@ -365,8 +554,10 @@ def run_frontier(snapshot: Snapshot, model: BudgetedModel, memory: MemoryStore,
     run_id = str(uuid.UUID(run_id)) if run_id is not None else str(uuid.uuid4())
     final = result["final"]
     memory.record_run(
-        run_id, line_id, strategy, best_title=final["winner"]["title"],
-        lessons=final["verification"]["evidence_limitations"],
+        run_id, line_id, strategy,
+        best_title=(final["winner"]["title"] if final["winner"] is not None
+                    else "[NO_EXECUTABLE_EMPIRICAL_CANDIDATE]"),
+        lessons=final["verification"].get("evidence_limitations", []),
         status="eligible" if final["status"] == "candidate_for_human_review" else "failure",
         experiment_summary=(json.dumps(final["pilot"], ensure_ascii=False)
                             if final["pilot"] else ""),
@@ -396,6 +587,7 @@ def run_frontier(snapshot: Snapshot, model: BudgetedModel, memory: MemoryStore,
             "synthetic_pilot": config.synthetic_pilot,
             "live_discovery": config.discover,
             "evaluation_claim_verified": False,
+            "feasibility_first": config.feasibility_first,
         },
         "model_calls": model.usage.calls,
         "reserved_tokens": model.usage.reserved_tokens,

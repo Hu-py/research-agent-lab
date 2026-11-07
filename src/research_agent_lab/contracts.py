@@ -79,6 +79,17 @@ def validate_candidate(raw: object, snapshot: Snapshot, lens: str) -> dict:
         raise ValueError("Candidate cites paper IDs absent from evidence snapshot")
     if not set(candidate["dataset_ids"]) <= data_ids:
         raise ValueError("Candidate cites dataset IDs absent from evidence snapshot")
+    # The proposal's execution plan remains provisional until the independent
+    # feasibility gate validates each referenced field and access flag.
+    # Preserve only a bounded JSON object; never infer missing variables.
+    plan = raw.get("execution_plan")
+    if isinstance(plan, dict):
+        import json
+        try:
+            if len(json.dumps(plan, ensure_ascii=False, allow_nan=False)) <= 9000:
+                candidate["execution_plan"] = plan
+        except (TypeError, ValueError):
+            pass
     candidate.update({
         "id": lens,
         "novelty_verified": False,

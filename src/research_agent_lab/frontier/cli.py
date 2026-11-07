@@ -53,6 +53,10 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--persist", action="store_true", help="Explicitly persist selected metadata to Supabase")
     run.add_argument("--bilingual-report", action="store_true",
                      help="One additional bounded model call for Chinese+English research summary")
+    run.add_argument("--feasibility-first", action="store_true",
+                     help="Reject unverifiable empirical proposals before Elo; "
+                          "attempt bounded LLM feasibility repair and return actionable "
+                          "dependency plan when no eligible study exists")
     run.add_argument("--stream-progress", action="store_true",
                      help="Opt-in private per-node Supabase live events; requires SQL 007 and --persist")
 
@@ -131,6 +135,7 @@ def main(argv: list[str] | None = None) -> int:
                             max_papers=args.max_papers,
                             max_pairs_per_tournament=args.max_pairs,
                             discover=args.discover,
+                            feasibility_first=args.feasibility_first,
                         ),
                         source_allowlist=registry,
                         pilot_manifest=pilot,

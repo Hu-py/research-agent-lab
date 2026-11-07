@@ -177,6 +177,8 @@ def main() -> int:
             args.append("--persist")
         if live_events:
             args.append("--stream-progress")
+        if os.getenv("FEASIBILITY_FIRST", "true").lower() == "true":
+            args.append("--feasibility-first")
         if bilingual_report:
             args.append("--bilingual-report")
         status = frontier_main(args)
