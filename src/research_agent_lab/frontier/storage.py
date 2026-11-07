@@ -50,6 +50,7 @@ def persist_frontier_run(result: dict) -> None:
             "screening": result.get("screening", {}),
             "feasibility": result.get("feasibility", {}),
             "minimum_viable_plan": result.get("minimum_viable_plan"),
+            "recommendation_state": result.get("recommendation_state"),
             "knowledge": result.get("knowledge", {}),
             "comparison_context": result.get("comparison_context", {}),
             "bilingual_report": result.get("bilingual_report"),

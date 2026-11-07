@@ -240,7 +240,10 @@ def build_frontier_graph(model: BudgetedModel, config: FrontierConfig, *,
                 "of novelty, network realism, or access to observed datasets."
             )
         final = {
-            "status": "no_executable_candidates",
+            # SQL 002 status check remains backward compatible.
+            # The explicit no-winner outcome lives inside results JSONB.
+            "status": "needs_more_evidence",
+            "recommendation_state": "no_executable_candidates",
             "winner": None,
             "ranked_candidates": [],
             "archived_candidates": state["candidates"],

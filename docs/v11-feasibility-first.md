@@ -39,7 +39,8 @@ later separately controlled tests. Literature quality remains provisional.
 6. If no access-verified dataset exists, **do not waste money endlessly
    requesting repairs**. Store all blocked hypotheses and deliver
    `minimum_viable_plan` with a specific next-action checklist and status
-   `no_executable_candidates`. This is not misrepresented as an empirical
+   `recommendation_state=no_executable_candidates` (under SQL-002-compatible
+   `status=needs_more_evidence`). This is not misrepresented as an empirical
    study or a research recommendation.
 7. Optional fixed-code synthetic pilot can run in supported network-resilience
    scenarios; it is a software sanity test, not external scientific proof.

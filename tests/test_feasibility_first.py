@@ -87,7 +87,8 @@ def test_mock_frontier_never_ranks_inaccessible_data(tmp_path):
                             feasibility_first=True))
     finally:
         memory.close()
-    assert result["status"]=="no_executable_candidates"
+    assert result["status"]=="needs_more_evidence"
+    assert result["recommendation_state"]=="no_executable_candidates"
     assert result["winner"] is None
     assert result["matches"]==[]
     assert result["minimum_viable_plan"]["next_steps"]
