@@ -18,6 +18,11 @@ on:
         type: boolean
         required: true
         default: false
+      check_frontier_live_events:
+        description: "Read-only check of SQL 007 stage-event table (no AI calls)"
+        type: boolean
+        required: true
+        default: false
       check_llm_replay_cache:
         description: "Check optional SQL 006 model response replay table and key (read only)"
         type: boolean
@@ -46,6 +51,7 @@ jobs:
       CHECK_WORKBENCH: ${{ inputs.check_workbench }}
       CHECK_APPROVED_CATALOG: ${{ inputs.check_approved_catalog }}
       CHECK_LLM_REPLAY_CACHE: ${{ inputs.check_llm_replay_cache }}
+      CHECK_FRONTIER_LIVE_EVENTS: ${{ inputs.check_frontier_live_events }}
       TEAM_DATA_CATALOG_JSON: ${{ secrets.TEAM_DATA_CATALOG_JSON }}
       CHECK_LANGFUSE: ${{ inputs.check_langfuse }}
       EMIT_LANGFUSE_SMOKE_TRACE: ${{ inputs.emit_langfuse_smoke_trace }}

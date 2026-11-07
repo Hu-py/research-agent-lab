@@ -23,6 +23,7 @@ from .storage import check_frontier_supabase
 from research_agent_lab.supabase_auth import headers, supabase_url
 from research_agent_lab.langfuse_preflight import check_langfuse_connection
 from research_agent_lab.response_cache import configured_cache
+from research_agent_lab.frontier.live_events import check_frontier_event_store
 from .cli import main as frontier_main
 
 
@@ -95,6 +96,12 @@ def main() -> int:
                 "Knowledge graph writes require team_evidence and save_supabase=true"
             )
         validate_cloud_config(persist=persist)
+        live_events = os.getenv("STREAM_FRONTIER_EVENTS", "false").lower() == "true"
+        if live_events:
+            if not persist:
+                raise ValueError("Live stage streaming requires save_supabase=true")
+            check_frontier_event_store()
+            print("PASS: live event table (read-only preflight before paid model)")
         if os.getenv("LLM_REPLAY_CACHE_ENABLED", "false").lower() == "true":
             if not persist:
                 raise ValueError("Replay cache requires isolated Supabase persistence")
@@ -167,6 +174,8 @@ def main() -> int:
             args.append("--synthetic-pilot")
         if persist:
             args.append("--persist")
+        if live_events:
+            args.append("--stream-progress")
         status = frontier_main(args)
         if status != 0:
             return status

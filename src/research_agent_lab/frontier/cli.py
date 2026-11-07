@@ -21,6 +21,7 @@ from .memory import MemoryStore
 from .mock import FrontierMockModel
 from .storage import persist_frontier_run, check_frontier_supabase
 from .remote_memory import hydrate_recent_memory
+from .live_events import FrontierEventPublisher, check_frontier_event_store
 
 
 def _read_json(path: str):
@@ -49,6 +50,8 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--memory", default="outputs/frontier-memory.sqlite")
     run.add_argument("--out", default="", help="Output JSON; stdout if omitted")
     run.add_argument("--persist", action="store_true", help="Explicitly persist selected metadata to Supabase")
+    run.add_argument("--stream-progress", action="store_true",
+                     help="Opt-in private per-node Supabase live events; requires SQL 007 and --persist")
 
     feedback = sub.add_parser("feedback", help="Record human review after final recommendation")
     feedback.add_argument("--memory", default="outputs/frontier-memory.sqlite")
@@ -85,12 +88,17 @@ def main(argv: list[str] | None = None) -> int:
                     raise ValueError("Source registry must be a nonempty JSON list of venue names")
                 registry = {v.strip().casefold() for v in venues}
             pilot = _read_json(args.pilot_manifest) if args.pilot_manifest else None
+            if args.stream_progress and not args.persist:
+                raise ValueError("Private progress events require --persist")
             if args.persist:
                 check_frontier_supabase()
+                if args.stream_progress:
+                    check_frontier_event_store()
                 hydrate_recent_memory(memory, snapshot.research_line.id)
             underlying = FrontierMockModel() if args.mock else DeepSeekJSONModel()
             traced = TracedModel(underlying)
             cache = None
+            publisher = None
             try:
                 cache = (configured_cache(default_scope="research-team")
                          if not args.mock else None)
@@ -107,6 +115,9 @@ def main(argv: list[str] | None = None) -> int:
                                "max_generations": args.max_generations}
                     ) if traced.client is not None else nullcontext()
                 )
+                if args.stream_progress:
+                    publisher = FrontierEventPublisher()
+                    publisher.started()
                 with root_ctx as trace_root:
                     result = run_frontier(
                         snapshot, model, memory,
@@ -120,6 +131,8 @@ def main(argv: list[str] | None = None) -> int:
                         ),
                         source_allowlist=registry,
                         pilot_manifest=pilot,
+                        event_sink=publisher.emit if publisher else None,
+                        run_id=publisher.run_id if publisher else None,
                     )
                     if trace_root is not None:
                         trace_root.update(
@@ -139,6 +152,8 @@ def main(argv: list[str] | None = None) -> int:
                 }
                 if args.persist:
                     persist_frontier_run(result)
+                if publisher:
+                    publisher.finished()
                 output = json.dumps(report, ensure_ascii=False, indent=2)
                 if args.out:
                     path = Path(args.out)
@@ -148,7 +163,13 @@ def main(argv: list[str] | None = None) -> int:
                 else:
                     print(output)
                 return 0
+            except (ValueError, RuntimeError, OSError, KeyError, TypeError):
+                if publisher is not None:
+                    publisher.failed()
+                raise
             finally:
+                if publisher is not None:
+                    publisher.close()
                 traced.close()
                 if cache is not None:
                     cache.close()

@@ -304,3 +304,8 @@ file itself, custodians and sensitive source metadata are **not** stored here.
   cross-run audit is descriptive, not causal or external scientific validation.
 
 [Read V0.7 setup and scientific limitations](docs/v07-recovery-and-ab.md).
+
+
+## V0.9: authenticated live research-stage timeline
+
+After executing [SQL 007](sql/007_frontier_live_events.sql), enable `stream_live_events=true` in the live workflow to record **real LangGraph node completions** in a private, append-only table. The Research Atlas workbench can display them during execution after secure Vercel configuration. [Setup instructions](docs/v09-live-events.md).

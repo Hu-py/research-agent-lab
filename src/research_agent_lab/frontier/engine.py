@@ -286,7 +286,9 @@ def run_frontier(snapshot: Snapshot, model: BudgetedModel, memory: MemoryStore,
                  config: FrontierConfig | None = None, *,
                  source_allowlist: set[str] | None = None,
                  search_fn: Callable | None = None,
-                 pilot_manifest: dict | None = None) -> dict:
+                 pilot_manifest: dict | None = None,
+                 event_sink: Callable[[dict], None] | None = None,
+                 run_id: str | None = None) -> dict:
     config = config or FrontierConfig()
     if not config.discover and len(snapshot.papers) < 1:
         raise ValueError("At least one paper is required without live discovery")
@@ -310,11 +312,26 @@ def run_frontier(snapshot: Snapshot, model: BudgetedModel, memory: MemoryStore,
         "memory_hints": hints, "decisions": [], "events": [],
         "verification": {}, "pilot": {}, "final": {}
     }
-    result = build_frontier_graph(
+    execution = build_frontier_graph(
         model, config, source_allowlist=source_allowlist,
         search_fn=search_fn, pilot_manifest=pilot_manifest
-    ).invoke(initial, config={"recursion_limit": 60})
-    run_id = str(uuid.uuid4())
+    )
+    # No behavior change for legacy (non-streamed) calls. For opt-in live
+    # telemetry, use LangGraph values streaming and emit real node completions.
+    if event_sink is None:
+        result = execution.invoke(initial, config={"recursion_limit": 60})
+    else:
+        result = initial
+        reported = 0
+        for state in execution.stream(
+            initial, config={"recursion_limit": 60}, stream_mode="values"
+        ):
+            result = state
+            event_rows = state.get("events") or []
+            for event in event_rows[reported:]:
+                event_sink(event)
+            reported = len(event_rows)
+    run_id = str(uuid.UUID(run_id)) if run_id is not None else str(uuid.uuid4())
     final = result["final"]
     memory.record_run(
         run_id, line_id, strategy, best_title=final["winner"]["title"],

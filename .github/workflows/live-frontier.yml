@@ -31,6 +31,11 @@ on:
         type: choice
         options: ["1", "2", "3"]
         default: "3"
+      stream_live_events:
+        description: "Persist private node completion events for the live dashboard (requires SQL 007)"
+        required: true
+        type: boolean
+        default: false
       synthetic_pilot:
         description: "Fixed-code toy network resilience pilot (no raw data, not validation)"
         required: true
@@ -90,6 +95,7 @@ jobs:
       MAX_PAPERS_INPUT: ${{ inputs.max_papers }}
       MAX_PAIRS_INPUT: ${{ inputs.max_pairs }}
       RUN_SYNTHETIC_PILOT: ${{ inputs.synthetic_pilot }}
+      STREAM_FRONTIER_EVENTS: ${{ inputs.stream_live_events }}
       SAVE_SUPABASE: ${{ inputs.save_supabase }}
       SAVE_KNOWLEDGE_GRAPH: ${{ inputs.save_knowledge_graph }}
       MAX_MODEL_CALLS: ${{ inputs.max_generations == '2' && '55' || '30' }}
