@@ -343,3 +343,8 @@ https://github.com/Hu-py/research-opportunity-workbench/blob/main/docs/research-
 ## Feasibility-first ideation (v1.1)
 
 Real cloud research now uses deterministic **pre-Elo** data and protocol checks, bounded evidence-driven hypothesis revision, and an actionable fallback when no usable empirical data has been verified. Unknown data rights are never upgraded by an Agent's opinion. [Setup and scientific limits](docs/v11-feasibility-first.md).
+
+
+## V2.0 architecture: Meta Supervisor + four research loops
+
+An **opt-in, zero-cost nested LangGraph** orchestration now models evidence, formulation, competition and experimental feedback as four local loops, supervised by a parent controller with reason-coded cross-loop backtracking. The current paid V1 workflow remains unchanged. [Architecture and free offline test scenarios](docs/v20-nested-research-loop-architecture.md).
